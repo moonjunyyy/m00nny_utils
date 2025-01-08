@@ -46,7 +46,7 @@ def install_cuda_toolkit(version: str, installation_path: str) -> None:
         print(f"Licence:      {value['license']}")
         print(f"Licence Path: {value['license_path']}")
         print(f"Version:      {value['version']}")
-        if value['license_path'] != "CUDA Toolkit": print("Pass"); continue
+        if value['license'] != "CUDA Toolkit": print("Pass"); continue
         try: target_system_dict = value[target_system]
         except KeyError: print(f"{key} is not available for {target_system}"); continue
         relative_path = target_system_dict['relative_path']
