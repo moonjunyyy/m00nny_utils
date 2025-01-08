@@ -1,0 +1,9 @@
+*.pyc
+*.log
+*.err
+*.out
+**/__pycache__/**
+**/.vscode/**
+**/lib*/**
+**/bin*/**
+**/objdir*/**
