@@ -11,7 +11,7 @@ class _Global_Log_Queue_Listener:
     __initialized = False
     def __new__(cls, *args, **kwargs) -> Self:
         if cls.__instance is None:
-            cls.__instance = super(_Global_Log_Queue_Listener, cls).__new__(cls=cls)
+            cls.__instance = super(_Global_Log_Queue_Listener, cls).__new__(cls)
             cls.__instance.GLOBAL_LISTENNER = None
             cls.__instance.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
             cls.__instance.GLOBAL_LISTENING = False
@@ -32,17 +32,17 @@ class _Global_Log_Queue_Listener:
             handlers = []
             if use_STDOUT:
                 stream_handler = StreamHandler(stream = sys.stdout)
-                stream_handler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ] %(message)s'))
+                stream_handler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ]: %(message)s'))
                 stream_handler.setLevel(level=level)
                 handlers.append(stream_handler)
             if use_STDERR:
                 error_handler = StreamHandler(stream = sys.stderr)
-                error_handler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ] %(message)s'))
+                error_handler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ]: %(message)s'))
                 error_handler.setLevel(level=logging.WARNING)
                 handlers.append(error_handler)
             if path is not None:
                 file_handeler = FileHandler(filename=f'{path}/global.log')
-                file_handeler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ] %(message)s'))
+                file_handeler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ]: %(message)s'))
                 file_handeler.setLevel(level=logging.DEBUG)
                 handlers.append(file_handeler)
             self.GLOBAL_LISTENNER = logging.handlers.QueueListener(self.GLOBAL_LOG_QUEUE, *handlers, respect_handler_level=True)
@@ -78,10 +78,10 @@ class _Global_Log_Queue_Listener:
             self.GLOBAL_LISTENNER.stop()
             self.GLOBAL_LISTENING = False
             self.GLOBAL_LISTENNER = None
+            self.cnt -= 1
         else: print("ERROR: Listener is not running!")
 
     def __del__(self) -> None:
-        self.cnt -= 1
         if self.cnt == 0:
             self.stop()
             del self.__instance
@@ -95,23 +95,26 @@ class Log:
             if level.upper() == 'WARNING':  return logging.WARNING
             if level.upper() == 'ERROR':    return logging.ERROR
             if level.upper() == 'CRITICAL': return logging.CRITICAL
-        return self.INFO
+        return logging.INFO
 
     def __init__(
             self,
             name:Union[str, None]        = None,
-            level:Union[int, str]        ='INFO',
+            level:Union[int, str]        ='DEBUG',
             global_level:Union[int, str] ='INFO',
             path:os.PathLike             = None,
             use_STDOUT:bool              = True,
             use_STDERR:bool              = False
             ) -> None:
+        level = self.get_level(level=level)
+        global_level = self.get_level(level=global_level)
+
         self.listener = _Global_Log_Queue_Listener(
             level      = global_level,
             path       = path,
             use_STDOUT = use_STDOUT,
             use_STDERR = use_STDERR)
-        self.level    = self.get_level(level=level)
+        self.level    = level
         self.logger   = self.get_logger(name=name, level=level)
 
     def get_logger(
@@ -123,7 +126,6 @@ class Log:
         logger.setLevel(level=self.get_level(level=level))
         handler = QueueHandler(queue=self.listener.get_log_queue())
         handler.setLevel(level=self.get_level(level=level))
-        handler.setFormatter(fmt=logging.Formatter(fmt='[ %(asctime)s | %(name)s | %(levelname)s ] %(message)s'))
         logger.addHandler(hdlr=handler)
         return logger
     
@@ -133,3 +135,6 @@ class Log:
     def warning (self, message:str) -> None: self.logger.warning (msg=message)
     def error   (self, message:str) -> None: self.logger.error   (msg=message)
     def critical(self, message:str) -> None: self.logger.critical(msg=message)
+
+    def stdout(self, message:str) -> None: print(message, file=self.logger)
+    def stderr(self, message:str) -> None: print(message, file=sys.stderr)

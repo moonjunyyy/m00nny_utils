@@ -1,4 +1,3 @@
-import math
 import torch
 
 class WarmUpConstantScheduler(torch.optim.lr_scheduler.LRScheduler):

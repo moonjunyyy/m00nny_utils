@@ -2,8 +2,10 @@
 *.log
 *.err
 *.out
+release/**
+debug/**
+**/.hash
 **/__pycache__/**
 **/.vscode/**
-**/lib*/**
-**/bin*/**
 **/objdir*/**
+**/third_party/**

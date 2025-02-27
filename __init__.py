@@ -1,111 +1,197 @@
-from . import utils
+from . import algorithm
+from . import linalg
+from .system.log import Log as Log
 
-def _build() -> None:
+def __bootstrap__() -> None:
+    import multiprocessing as mp
+
     import os
+    from .system.log import Log
+    _log_level = os.environ.get("LIBM00NNY_LOG_LEVEL", "INFO")
+    _log_path  = os.environ.get("LIBM00NNY_LOG_PATH", None)
+    if _log_path: _log_path = os.path.abspath(path=_log_path)
+    log = Log(name="m00nny_utils_init", global_level=_log_level, path=_log_path)
+
     import sys
+    import json
     import torch
-    import subprocess
-    from .utils.install_libtorch import install_libtorch
-    from .utils.install_cuda_toolkit import install_cuda_toolkit
+    import shutil
+    from .util.version import Version
+    from .util.integrity_verify import integrity_verify_dir, integrity_sign_dir
+    from .install.install_requirements import install_cuda_libs, install_libtorch, install_nvtx
 
-    # Get the system information
-    _os_info = os.uname()
-    _os_info = f"{_os_info.sysname}_{_os_info.release}_{_os_info.machine}" # For example, Linux_5.4.0-80-generic_x86_64
-
-    # Get the python path for get the base path.
-    _python_path = os.path.dirname(p=sys.executable)
-    _base_env_path = os.path.dirname(p=_python_path)
-
-    # Get the torch version and cuda version
+    __lock = mp.Lock()
+    FORCE_BUILD: int    = int(os.environ.get("LIBM00NNY_FORCE_REBUILD",  "0"))
+    ROOT_DIR: str       = os.path.dirname(p=os.path.dirname(p=sys.executable))
+    CURRENT_DIR: str    = os.path.dirname(p=__file__)
+    
+    _os_info = os.uname()    
+    OS: str             = _os_info.sysname.lower()
+    OS_VERSION: str     = _os_info.release
+    OS_ARCH: str        = _os_info.machine.lower()
+    
     _torch_version = torch.__version__
-    _torch_cuda_version = torch.version.cuda
+    _cuda_version = torch.version.cuda
+    _torch_cudnn_version = torch.backends.cudnn.version() # 90100
+    USE_CXX11_ABI: bool = torch._C._GLIBCXX_USE_CXX11_ABI # True or False
+    
+    PYTHON_PATH: str        = sys.executable
+    PYTHON_VERSION: Version = Version(sys.version)
+    TORCH_VERSION: Version  = Version(_torch_version)
+    CUDA_VERSION: Version   = Version(_cuda_version)
+    CUDNN_VERSION: Version  = Version(_torch_cudnn_version // 10000, _torch_cudnn_version % 10000 // 100, _torch_cudnn_version % 100)
+    
+    USE_NVTX: int        = int(os.environ.get("LIBM00NNY_USE_NVTX",       "1"))
+    USE_CUDNN: int       = int(os.environ.get("LIBM00NNY_USE_CUDNN",      "1"))
+    USE_CUDSS: int       = int(os.environ.get("LIBM00NNY_USE_CUDSS",      "1"))
+    USE_CUSPARSELT: int  = int(os.environ.get("LIBM00NNY_USE_CUSPARSELT", "1"))
 
-    if not os.path.exists(path=os.path.join(_base_env_path, "bin", "gcc")):
-        raise FileNotFoundError(f"GCC path not found: {_base_env_path}/bin/gcc.\n"
-                                f"This module requires the GCC compiler to build the shared library.\n"
-                                f"You may need to install the GCC compiler.")
-    if not os.path.exists(path=os.path.join(_base_env_path, "bin", "g++")):
-        raise FileNotFoundError(f"G++ path not found: {_base_env_path}/bin/g++.\n"
-                                f"This module requires the G++ compiler to build the shared library.\n"
-                                f"You may need to install the G++ compiler.")
-    if not os.path.exists(path=os.path.join(_base_env_path, "bin", "cmake")):
-        raise FileNotFoundError(f"CMake path not found: {_base_env_path}/bin/cmake.\n"
-                                f"This module requires the CMake to build the shared library.\n"
-                                f"You may need to install the CMake.")
+    DEBUG: int           = int(os.environ.get("LIBM00NNY_DEBUG",          "0"))
 
-    # For example, conda environment has the cuda toolkit installed.
-    # But it has some files missing, we cannot perform the build.
-    # So, we need to install the cuda toolkit.
-    _cuda_base_path = f"{_base_env_path}/cuda-{_torch_cuda_version}"
-    if not os.path.exists(path=_cuda_base_path):
-        os.makedirs(name=_cuda_base_path)
-        install_cuda_toolkit(version=_torch_cuda_version, installation_path=_cuda_base_path)
+    # Check the GCC, G++, CMake
+    assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "gcc")), "GCC path not found."
+    assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "g++")), "G++ path not found."
+    assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "cmake")), "CMake path not found."
 
-    _torch_cuda_version = _torch_cuda_version.replace(".", "") # For example, 102
-    _libtorch_base_path = f"{_base_env_path}/libtorch_{_torch_version}_cu{_torch_cuda_version}"
-    # Find the libtorch path, if not found, download the libtorch.
-    if not os.path.exists(path=_libtorch_base_path):
-        import zipfile
-        import requests
-        _libtorch_file_name = f"libtorch-cxx11-abi-shared-with-deps-{_torch_version}+cu{_torch_cuda_version}.zip"
-        _libtorch_url = f"https://download.pytorch.org/libtorch/cu{_torch_cuda_version}/{_libtorch_file_name.replace('+', '%2B')}"
-        res = requests.get(url=_libtorch_url)
-        if res.status_code != 200:
-            raise RuntimeError(f"Libtorch download failed with status code: {res.status_code}.\n"
-                               f"Please check the libtorch url: {_libtorch_url}\n"
-                               f"You may need to download the libtorch manually proper version from the link: {_libtorch_url}")
-        with open(file=os.path.join(_base_env_path, _libtorch_file_name), mode="wb") as f:
-            # Save the libtorch zip file
-            f.write(res.content)
-            # Extract the libtorch zip file to the base environment path (_base_env_path/libtorch)
-            zipfile.ZipFile(file=f).extractall(path=_base_env_path)
-        # Remove the libtorch zip file
-        os.remove(path=os.path.join(_base_env_path, _libtorch_file_name))
-        if not os.path.exists(path=os.path.join(_base_env_path,  "libtorch")):
-            raise FileNotFoundError(f"Libtorch path not found: {_libtorch_base_path}.\n"
-                                    f"You may need to download the libtorch manually proper version from the link: {_libtorch_url}")
-        # Rename the path for version control
-        os.rename(
-            src=os.path.join(_base_env_path,  "libtorch"),
-            dst=_libtorch_base_path
-        )
+    with __lock:
+        # Check the CUDA Toolkit
+        CUDA_PATH = install_cuda_libs(lib_name="cuda", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=CUDA_VERSION, cuda_version=CUDA_VERSION, condition=lambda kv: kv[1]['license'] == "CUDA Toolkit")
+        assert os.path.isfile(path=os.path.join(CUDA_PATH, "bin", "nvcc")), "Nvcc path not found."
+        _cmake_paths = [CUDA_PATH]
+        # Check the Libtorch
+        LIBTORCH_PATH = install_libtorch(os_name=OS, root_dir=ROOT_DIR, version=TORCH_VERSION, cuda_version=CUDA_VERSION, use_cxx11_abi=USE_CXX11_ABI)
+        assert os.path.isfile(path=os.path.join(LIBTORCH_PATH, "lib", "libtorch.so")), "Libtorch shared library path not found."
+        _cmake_paths.append(LIBTORCH_PATH)
 
-    _build_id = f"{_os_info}_torch_{_torch_version}+cu{_torch_cuda_version}"
-    _module_path = os.path.dirname(p=__file__)
-    print(f"OS info: {_os_info}")
-    print(f"Base environment path: {_base_env_path}")
-    print(f"Build id: {_build_id}")
-    print(f"Python path: {_python_path}")
-    print(f"Python version: {sys.version}")
-    print(f"CUDA root path: {_cuda_base_path}")
-    print(f"CUDA version: {_torch_cuda_version}")
-    print(f"Libtorch path: {_libtorch_base_path}")
-    print(f"Libtorch version: {_torch_version}")
-    print(f"Module path: {_module_path}")
+        if USE_CUDNN:
+            # Check the CuDNN
+            CUDNN_PATH = install_cuda_libs(lib_name="cudnn", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=CUDNN_VERSION, cuda_version=CUDA_VERSION, condition=lambda kv: True)
+            assert os.path.isfile(path=os.path.join(CUDNN_PATH, "lib", "libcudnn.so")), "CuDNN shared library path not found."
+            _cmake_paths.append(CUDNN_PATH)
+        if USE_CUDSS:
+            # Check the CuDSS
+            CUDSS_PATH = install_cuda_libs(lib_name="cudss", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=None, cuda_version=CUDA_VERSION, condition=lambda kv: True)
+            assert os.path.isfile(path=os.path.join(CUDSS_PATH, "lib", "libcudss.so")), "CuDSS shared library path not found."
+            _cmake_paths.append(CUDSS_PATH)
+        if USE_CUSPARSELT:
+            # Check the CuSparseLT
+            CUSPARSELT_PATH = install_cuda_libs(lib_name="cusparselt", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=None, cuda_version=CUDA_VERSION, condition=lambda kv: True)
+            assert os.path.isfile(path=os.path.join(CUSPARSELT_PATH, "lib", "libcusparseLt.so")), "CuSparseLT shared library path not found."
+            _cmake_paths.append(CUSPARSELT_PATH)
+        # Check the NVTX
+        if USE_NVTX:
+            _ = install_nvtx(root_dir=CURRENT_DIR)
+        try:
+            if FORCE_BUILD: log.info("Forcing to build the shared library..."); raise RuntimeError("Forcing to build the shared library...")
+            _lib_installation_path = os.path.join(CURRENT_DIR, "debug" if DEBUG else "release")
+            if not os.path.isdir(s=_lib_installation_path): os.makedirs(name=_lib_installation_path); raise RuntimeError("Shared library is not found.")
+            if os.path.isdir(s=_lib_installation_path) and os.path.isdir(s=os.path.join(_lib_installation_path, "lib")):
+                with open(file=os.path.join(_lib_installation_path, "build_info.json"), mode="r") as f:
+                    _info = json.load(fp=f)
+                if not (\
+                _info["OS"]         == f"{OS}-{OS_ARCH}" and\
+                _info["Python"]     == str(PYTHON_VERSION) and\
+                _info["CUDA"]       == str(CUDA_VERSION) and\
+                _info["Libtorch"]   == str(TORCH_VERSION) and\
+                _info["CUDNN"]      == str(CUDNN_VERSION) if USE_CUDNN else None and\
+                _info["CUDSS"]      == USE_CUDSS if USE_CUDSS else None and\
+                _info["CUSPARSELT"] == USE_CUSPARSELT if USE_CUSPARSELT else None and\
+                _info["NVTX"]       == USE_NVTX if USE_NVTX else None):
+                    raise RuntimeError("Shared library is not up-to-date.")
+                
+            if not (\
+                integrity_verify_dir(directory_path=os.path.join(CURRENT_DIR, "src"),     
+                                     hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.src.sha256')) and\
+                integrity_verify_dir(directory_path=os.path.join(CURRENT_DIR, "include"), 
+                                     hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.include.sha256'))):
+                raise RuntimeError("Source code is changed.")
+            log.info("Shared library is up-to-date.\n")
+        except Exception as e:
+            log.info("Source code is changed or library is not found. Building the shared library...\n")
+            log.debug(f"{'OS info:':<20}{OS}-{OS_VERSION}-{OS_ARCH}")
+            log.debug(f"{'Root path:':<20}{ROOT_DIR}")
+            log.debug(f"{'Python version:':<20}{PYTHON_VERSION}")
+            log.debug(f"{'Python path:':<20}{PYTHON_PATH}")
+            log.debug(f"{'CUDA version:':<20}{CUDA_VERSION}")
+            log.debug(f"{'CUDA path:':<20}{CUDA_PATH}")
+            log.debug(f"{'Libtorch version:':<20}{TORCH_VERSION}")
+            log.debug(f"{'Libtorch path:':<20}{LIBTORCH_PATH}")
+            log.debug(f"{'CUDNN info:':<20}{CUDNN_VERSION if USE_CUDNN else None}")
+            log.debug(f"{'CUDSS info:':<20}{USE_CUDSS if USE_CUDSS else None}")
+            log.debug(f"{'CUSPARSELT info:':<20}{USE_CUSPARSELT if USE_CUSPARSELT else None}")
+            log.debug(f"{'NVTX info:':<20}{USE_NVTX if USE_NVTX else None}")
+            log.debug(f"{'Debug mode:':<20}{'Debug' if DEBUG else 'Release'}")
+            log.debug(f"{'Module path:':<20}{CURRENT_DIR}")
+            log.debug(f"CMAKE paths:\n\t{'\n\t'.join(_cmake_paths)}")
+            _command = f'''
+#!/bin/bash
 
-    if not os.path.exists(path=os.path.join(_module_path, f"lib_{_build_id}")):
-        _command = f"cd {_module_path} && "\
-                   f"mkdir lib_{_build_id} && "\
-                   f"mkdir objdir_{_build_id} && "\
-                   f"cd objdir_{_build_id} && "\
-                   f"cmake .. "\
-                   f"-DPREFIX_PATH={_module_path}/lib_{_build_id} "\
-                   f"-DCMAKE_C_COMPILER={_base_env_path}/bin/gcc "\
-                   f"-DCMAKE_CXX_COMPILER={_base_env_path}/bin/g++ "\
-                   f"-DCMAKE_CUDA_COMPILER={_cuda_base_path}/bin/nvcc "\
-                   f"-DCMAKE_INCLUDE_PATH=\"{_base_env_path}/include;{_libtorch_base_path}/include;{_cuda_base_path}/include\" "\
-                   f"-DCMAKE_LIBRARY_PATH=\"{_libtorch_base_path}/lib;{_cuda_base_path}/lib;{_libtorch_base_path}/lib64;{_cuda_base_path}/lib64;{_base_env_path}/lib;{_base_env_path}/lib64\""\
-                   f"-DPYTHON_DEV_PATH={_base_env_path} "\
-                   f"-DLIBTORCH_PATH={_libtorch_base_path}"\
-                   f"-DCUDA_TOOLKIT_ROOT_DIR={_cuda_base_path} "\
-                   f"-DCMAKE_BUILD_TYPE=Release "\
-                   f"&& if [ $? -ne 0 ]; then rm -rf objdir_{_build_id} lib_{_build_id} && exit 1; fi "\
-                   f"&& make -j$(nproc) "\
-                   f"&& if [ $? -ne 0 ]; then rm -rf objdir_{_build_id} lib_{_build_id} && exit 1; fi "\
-                   f"&& rm -rf objdir_{_build_id}"
-    print(f"Building shared library with the command:\n{_command}")
-    os.system(command=_command)
-    if not os.path.exists(path=os.path.join(_module_path, f"lib_{_build_id}")):
-        raise FileNotFoundError(f"Shared library build failed for the module: {_module_path} with build id: {_build_id}")
-# Build the shared library
-_build()
+# AUTO GENERATED BUILD SCRIPT
+# DO NOT MODIFY THIS SCRIPT
+
+cd {CURRENT_DIR}
+mkdir objdir
+cd objdir
+cmake .. \\
+-DPREFIX_PATH={CURRENT_DIR} \\
+-DCMAKE_C_COMPILER={ROOT_DIR}/bin/gcc \\
+-DCMAKE_CXX_COMPILER={ROOT_DIR}/bin/g++ \\
+-DCMAKE_CUDA_COMPILER={CUDA_PATH}/bin/nvcc \\
+-DUSE_CUDSS={USE_CUDSS} \\
+-DCAFFE2_USE_CUDNN={USE_CUDNN} \\
+-DCAFFE2_USE_CUSPARSELT={USE_CUSPARSELT} \\
+-DCAFFE2_USE_CUFILE=1 \\
+-DCMAKE_PREFIX_PATH=\"{';'.join(_cmake_paths)};$CMAKE_PREFIX_PATH\" \\
+-DCMAKE_BUILD_TYPE={"Debug" if DEBUG else "Release"} \\
+-Wno-dev
+if [ $? -ne 0 ]; then
+rm -rf objdir lib 
+exit 1
+fi
+echo ""
+
+make -j$(nproc)
+if [ $? -ne 0 ]; then
+rm -rf objdir lib
+exit 1
+fi
+echo ""
+
+rm -rf objdir
+'''
+            with open(file=os.path.join(CURRENT_DIR, "build.sh"), mode="w") as f: f.write(_command)
+            log.debug(f"Build script is generated at: {CURRENT_DIR}/build.sh\n\n")
+            os.system(command=f"chmod +x {CURRENT_DIR}/build.sh")
+            ret = os.system(command=f"bash {CURRENT_DIR}/build.sh")
+            shutil.rmtree(path=os.path.join(CURRENT_DIR, "objdir"))
+            os.remove(path=os.path.join(CURRENT_DIR, "build.sh"))
+            if ret != 0:
+                shutil.rmtree(path=_lib_installation_path)
+                raise RuntimeError(f"Shared library build failed for the module")
+            with open(file=os.path.join(_lib_installation_path, "build_info.json"), mode="w") as f:
+                json.dump(obj={
+                            "OS":         f"{OS}-{OS_ARCH}",
+                            "Python":     str(PYTHON_VERSION),
+                            "CUDA":       str(CUDA_VERSION),
+                            "Libtorch":   str(TORCH_VERSION),
+                            "CUDNN":      str(CUDNN_VERSION) if USE_CUDNN else None,
+                            "CUDSS":      USE_CUDSS if USE_CUDSS else None,
+                            "CUSPARSELT": USE_CUSPARSELT if USE_CUSPARSELT else None,
+                            "NVTX":       USE_NVTX if USE_NVTX else None},
+                        fp=f, indent=2)
+            integrity_sign_dir(directory_path=os.path.join(CURRENT_DIR, "src"),
+                               hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.src.sha256'))
+            integrity_sign_dir(directory_path=os.path.join(CURRENT_DIR, "include"),
+                               hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.include.sha256'))
+    import importlib.util
+    from .system.path_tree import PathTree
+    _lib_path = os.path.dirname(p=os.path.abspath(path=__file__))
+    _lib_path = os.path.join(_lib_path, "debug" if DEBUG else "release", "lib", "libm00nny_utils.so")
+    log.debug(f"Loading {_lib_path}...")
+    module_name = _lib_path.split(".")[0].replace("lib", "")
+    module_name = "m00nny_utils"
+    log.debug(f"Searching {module_name}...")
+    spec = importlib.util.spec_from_file_location(name=f"{module_name}", location=_lib_path)
+    module = importlib.util.module_from_spec(spec=spec)
+    spec.loader.exec_module(module=module)
+__bootstrap__()

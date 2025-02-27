@@ -1,0 +1,90 @@
+from dataclasses import dataclass
+
+@dataclass
+class EscapeCodes:
+    # Reset all
+    TERMINAL_RESET = "\033[0m"
+
+    # Colors
+    TERMINAL_CHAR_BLACK   = "\033[30m"
+    TERMINAL_CHAR_RED     = "\033[31m"
+    TERMINAL_CHAR_GREEN   = "\033[32m"
+    TERMINAL_CHAR_YELLOW  = "\033[33m"
+    TERMINAL_CHAR_BLUE    = "\033[34m"
+    TERMINAL_CHAR_MAGENTA = "\033[35m"
+    TERMINAL_CHAR_CYAN    = "\033[36m"
+    TERMINAL_CHAR_WHITE   = "\033[37m"
+    TERMINAL_CHAR_RESET   = "\033[39m"
+    TERMINAL_CHAR_COLOR= {
+        "k": TERMINAL_CHAR_BLACK,
+        "r": TERMINAL_CHAR_RED,
+        "g": TERMINAL_CHAR_GREEN,
+        "y": TERMINAL_CHAR_YELLOW,
+        "b": TERMINAL_CHAR_BLUE,
+        "m": TERMINAL_CHAR_MAGENTA,
+        "c": TERMINAL_CHAR_CYAN,
+        "w": TERMINAL_CHAR_WHITE,
+    "reset": TERMINAL_CHAR_RESET
+    }
+
+    # Styles
+    TERMINAL_STYLE_BOLD      = "\033[1m"
+    TERMINAL_STYLE_UNDERLINE = "\033[4m"
+    TERMINAL_STYLE_BLINK     = "\033[5m"
+    TERMINAL_STYLE_REVERSE   = "\033[7m"
+    TERMINAL_STYLE_CONCEAL   = "\033[8m"
+    TERMINAL_STYLE_RESET     = "\033[0m"
+    TERMINAL_STYLE= {
+        "bold": TERMINAL_STYLE_BOLD,
+        "underline": TERMINAL_STYLE_UNDERLINE,
+        "blink": TERMINAL_STYLE_BLINK,
+        "reverse": TERMINAL_STYLE_REVERSE,
+        "conceal": TERMINAL_STYLE_CONCEAL,
+        "reset": TERMINAL_STYLE_RESET
+    }
+
+    # Background colors
+    TERMINAL_BG_BLACK   = "\033[40m"
+    TERMINAL_BG_RED     = "\033[41m"
+    TERMINAL_BG_GREEN   = "\033[42m"
+    TERMINAL_BG_YELLOW  = "\033[43m"
+    TERMINAL_BG_BLUE    = "\033[44m"
+    TERMINAL_BG_MAGENTA = "\033[45m"
+    TERMINAL_BG_CYAN    = "\033[46m"
+    TERMINAL_BG_WHITE   = "\033[47m"
+    TERMINAL_BG_RESET   = "\033[49m"
+    TERMINAL_BG_COLOR= {
+        "k": TERMINAL_BG_BLACK,
+        "r": TERMINAL_BG_RED,
+        "g": TERMINAL_BG_GREEN,
+        "y": TERMINAL_BG_YELLOW,
+        "b": TERMINAL_BG_BLUE,
+        "m": TERMINAL_BG_MAGENTA,
+        "c": TERMINAL_BG_CYAN,
+        "w": TERMINAL_BG_WHITE,
+    "reset": TERMINAL_BG_RESET
+    }
+
+    # Control characters
+    TERMINAL_CLEAR_LINE = "\033[0K"
+    TERMINAL_CLEAR_SCREEN = "\033[2J"
+    TERMINAL_CURSOR_UP = "\033[A"
+    TERMINAL_CURSOR_DOWN = "\033[B"
+    TERMINAL_CURSOR_FORWARD = "\033[C"
+    TERMINAL_CURSOR_BACKWARD = "\033[D"
+    TERMINAL_CURSOR_NEXT_LINE = "\033[E"
+    TERMINAL_CURSOR_PREVIOUS_LINE = "\033[F"
+    TERMINAL_CURSOR_HORIZONTAL_ABSOLUTE = "\033[G"
+    TERMINAL_CURSOR_POSITION = "\033[H"
+    TERMINAL_ERASE_DISPLAY = "\033[J"
+    TERMINAL_ERASE_LINE = "\033[K"
+    TERMINAL_SCROLL_UP = "\033[S"
+    TERMINAL_SCROLL_DOWN = "\033[T"
+
+    # Save and restore cursor position
+    TERMINAL_CURSOR_SAVE = "\033[s"
+    TERMINAL_CURSOR_RESTORE = "\033[u"
+
+    # Set terminal title
+    TERMINAL_SET_TITLE = "\033]0;"
+    TERMINAL_SET_TITLE_END = "\007"

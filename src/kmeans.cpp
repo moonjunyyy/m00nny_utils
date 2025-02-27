@@ -4,7 +4,8 @@
 C++ class implementation
 */
 
-KMeans::KMeans(int n_clusters, int max_iter, int batchsize, int random_state, int init_method, int dist_method, double epsilon)
+m00nny::KMeans::KMeans
+(int64_t n_clusters, int64_t max_iter, int64_t batchsize, int64_t random_state, int8_t init_method, int8_t dist_method)
 {
     this->n_clusters   = n_clusters;
     this->max_iter     = max_iter;
@@ -12,43 +13,47 @@ KMeans::KMeans(int n_clusters, int max_iter, int batchsize, int random_state, in
     this->random_state = random_state;
     this->init_method  = init_method;
     this->dist_method  = dist_method;
-    this->epsilon      = epsilon;
 }
 
 template <typename _T>
-at::Tensor&
-KMeans::fit_predict(_T&& X)
-{ 
+torch::Tensor&
+m00nny::KMeans::fit_predict
+(_T&& X)
+{
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::fit_predict\n")
     auto _X = std::forward<_T>(X);
     this->fit(_X);
     return this->predict(_X);
 }
 
 template <typename _T>
-at::Tensor&
-KMeans::predict(_T&& X)
+torch::Tensor&
+m00nny::KMeans::predict
+(_T&& X)
 { 
-    at::Tensor _X = std::forward<_T>(X);
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::predict\n")
+    torch::Tensor _X = std::forward<_T>(X);
     this->update_labels(_X);
-    return this->labels;
+    return *(this->labels);
 }
 
 template <typename _T>
 void
-KMeans::fit(_T&& X)
+m00nny::KMeans::fit
+(_T&& X)
 {
-    torch::NoGradGuard no_grad;
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::fit\n")
     auto _X = std::forward<_T>(X);
     this->init_centers(_X);
-    at::Tensor old_centroids = torch::empty({this->n_clusters, X.size(1)}, X.options());
-    for (int i = 0; i < this->max_iter; i++)
+    torch::Tensor old_centroids = torch::empty({this->n_clusters, X.size(1)}, X.options());
+    for (int64_t i = 0; i < this->max_iter; i++)
     {
-        old_centroids.copy_(this->centroids);
+        old_centroids.copy_(*(this->centroids));
         this->update_labels (_X);
         this->update_centers(_X);
-        if (old_centroids.equal(this->centroids)) break;
+        if (old_centroids.equal(*(this->centroids))) break;
     }
-    if (this->centroids.size(0) != this->n_clusters)
+    if (this->centroids->size(0) != this->n_clusters)
     {
         printf("Error: The number of clusters is not equal to the number of centroids.\n");
         return;
@@ -56,347 +61,234 @@ KMeans::fit(_T&& X)
 }
 
 void
-KMeans::init_centers(at::Tensor& X)
+m00nny::KMeans::init_centers
+(torch::Tensor& X)
 {
-    this->centroids = at::empty({this->n_clusters, X.size(1)}, X.options());
-    this->labels    = at::empty({X.size(0)}, X.options().dtype(at::kInt));
-    this->distances = at::empty({X.size(0), this->n_clusters}, X.options());
-    // this->mask      = at::empty({X.size(0)}, X.options().dtype(at::kBool));
+    torch::NoGradGuard no_grad;
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::init_centers\n")
+    this->centroids.reset(); this->labels.reset(); this->distances.reset(); this->mask.reset();
+    this->centroids = std::make_unique<torch::Tensor>(torch::empty({this->n_clusters, X.size(1)}, X.options()));
+    this->labels    = std::make_unique<torch::Tensor>(torch::empty({X.size(0)}, X.options().dtype(torch::kLong)));
+    this->distances = std::make_unique<torch::Tensor>(torch::empty({X.size(0), this->n_clusters}, X.options()));
+    this->mask      = std::make_unique<torch::Tensor>(torch::empty({X.size(0)}, X.options().dtype(torch::kBool)));
 
-    if      (this->init_method == Random) this->centroids.copy_(X.index({torch::randperm(X.size(0)).slice(0, 0, this->n_clusters)}));
+    if      (this->init_method == Random) this->centroids->copy_(X.index({torch::randperm(X.size(0)).slice(0, 0, this->n_clusters)}));
     else if (this->init_method == KMeansPP)
     {
-        this->centroids.index({0}).copy_(X.index({torch::randperm(X.size(0)).slice(0, 0, 1)}));                  // Choose the first centroid randomly
-        at::Tensor _distances = this->distances.slice(1,0,1,1);
-        at::Tensor _centroids = this->centroids.slice(0,0,1,1);
-        at::Tensor min_dist = torch::zeros({X.size(0)}, X.options()) + this->epsilon;
-        at::Tensor min_idx  = torch::empty({X.size(0)}, X.options().dtype(torch::kInt64));
-        compute_distance_matrix_out(_distances, X, _centroids);                                                  // Compute the distance matrix
-        for (int i = 0; i < (this->n_clusters - 1); i++)
-        {   
-            _distances = this->distances.slice(1,0,i+1,1);
-            _centroids = this->centroids.slice(0,0,i+1,1);
-            compute_distance_matrix_out(_distances, X, _centroids);                                              // Compute the distance matrix
-            torch::min_out(min_dist, min_idx, this->distances.slice(1,0,i+1,1), 1, false);                       // Get the minimum distance to the nearest centroid
-            this->centroids.index({i+1}).copy_(X.index({(min_dist/min_dist.sum()).multinomial(1).item<int>()})); // Choose the next centroid
+        this->centroids->index({0}).copy_(X.index({torch::randint(X.size(0), {1}).item<int64_t>()})); // Choose the first centroid randomly
+        torch::Tensor _distances;
+        torch::Tensor _centroids;
+        torch::Tensor min_dist = torch::zeros({X.size(0)}, X.options());
+        torch::Tensor min_idx  = torch::empty({X.size(0)}, X.options().dtype(torch::kLong));
+        for (int64_t i = 1; i < this->n_clusters; i++)
+        {
+            _distances = this->distances->slice(1,i-1,i,1);
+            _centroids = this->centroids->slice(0,i-1,i,1);
+            compute_distance_matrix_out(_distances, X, _centroids, this->batch_size, this->dist_method); // Compute the distance matrix
+            torch::min_out(min_dist, min_idx, this->distances->slice(1,0,i,1), 1, false); // Get the minimum distance to the nearest centroid
+            this->centroids->index({i}).copy_(X.index({(min_dist).multinomial(1).item<int64_t>()})); // Choose the next centroid
         }
     }
     else {printf("Error: Unknown init_method\n"); return;}
 }
 
 void
-KMeans::update_centers(at::Tensor& X)
+m00nny::KMeans::update_centers
+(torch::Tensor& X)
 {
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::update_centers\n")
     torch::NoGradGuard no_grad;
-    for (int i = 0; i < this->n_clusters; i++)
+    for (int64_t i = 0; i < this->n_clusters; i++)
     {
-        this->mask = this->labels == i;
-        if (this->mask.sum().item<int>() == 0) continue;
-        at::Tensor _masked_centroids = this->centroids.index({i});
-        _masked_centroids.copy_(X.index({this->mask}).mean(0));
+        this->mask = std::make_unique<torch::Tensor>(this->labels->eq(i));
+        if (this->mask->sum().item<int64_t>() == 0) continue;
+        torch::Tensor _masked_centroids = this->centroids->index({i});
+        _masked_centroids.copy_(X.index({*(this->mask)}).mean(0));
     }
 }
 
 void
-KMeans::update_labels(at::Tensor& X)
+m00nny::KMeans::update_labels
+(torch::Tensor& X)
 {
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::update_labels\n")
     torch::NoGradGuard no_grad;
-    torch::argmin_out(this->labels, this->compute_distance_matrix(X, this->centroids), 1);
+    torch::argmin_out(*(this->labels), compute_distance_matrix(X, *(this->centroids), this->batch_size, this->dist_method), 1);
 }
 
-at::Tensor&
-KMeans::compute_distance_matrix(at::Tensor& X)
+const char*
+m00nny::KMeans::init_method_str
+()
 {
-    torch::NoGradGuard no_grad;
-    at::Tensor _batched_distance;
-    at::Tensor _batched_X;
-    for (int64_t i = 0; i < X.size(0); i += this->batch_size) 
-    {
-        _batched_distance = this->distances.slice(0, i, i+this->batch_size, 1);
-        _batched_X        = X.slice(0, i, i+this->batch_size, 1);
-        this->pairwise_distance_out( _batched_distance, _batched_X, this->centroids);
-    }
-    return this->distances;
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::init_method_str\n")
+    if      (this->init_method == KMeansPP) return "kmeans++";
+    else if (this->init_method == Random)   return "random";
+    else return "unknown";
 }
 
-at::Tensor&
-KMeans::compute_distance_matrix(at::Tensor& X, at::Tensor& Y)
+const char*
+m00nny::KMeans::dist_method_str
+()
 {
-    torch::NoGradGuard no_grad;
-    at::Tensor _batched_distance;
-    at::Tensor _batched_X;
-    for (int64_t i = 0; i < X.size(0); i += this->batch_size) 
-    {
-        _batched_distance = this->distances.slice(0, i, i+this->batch_size, 1);
-        _batched_X        = X.slice(0, i, i+this->batch_size, 1);
-        this->pairwise_distance_out(_batched_distance, _batched_X, Y);
-    }
-    return this->distances;
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::KMeans::dist_method_str\n")
+    return metric_str(this->dist_method);
 }
 
-at::Tensor&
-KMeans::compute_distance_matrix_out(at::Tensor& Out, at::Tensor& X, at::Tensor& Y)
-{
-    torch::NoGradGuard no_grad;
-    int64_t _x_size = X.size(0);
-    at::Tensor _batched_Out;
-    at::Tensor _batched_X;
-    for (int64_t i = 0; i < _x_size; i += this->batch_size)
-    {
-        _batched_Out = Out.slice(0, i, i+this->batch_size, 1);
-        _batched_X   =   X.slice(0, i, i+this->batch_size, 1);
-        this->pairwise_distance_out(_batched_Out, _batched_X, Y);
-    }
-    return Out;
-}
-
-at::Tensor
-KMeans::pairwise_distance(at::Tensor& X, at::Tensor& Y)
-{   
-    torch::NoGradGuard no_grad;
-    if (this->dist_method == Euclidean)
-    {
-        at::Tensor _dist = torch::norm(X.unsqueeze(1) - Y.unsqueeze(0), 2, 2);
-        return _dist;
-    }
-    else if (this->dist_method == Cosine)
-    {
-        at::Tensor _dist = 1 - torch::clamp(torch::mm(X, Y.t()) / (torch::norm(X, 2, 1, true) * torch::norm(Y, 2, 1, true).t() + this->epsilon), -1.0, 1.0);
-        return _dist;
-    }
-    else if (this->dist_method == Manhattan)
-    {
-        at::Tensor _dist = torch::norm(X.unsqueeze(1) - Y.unsqueeze(0), 1, 2);
-        return _dist;
-    }
-    else
-    {
-        printf("Error: Unknown distance method\n");
-        return torch::empty({0, 0});
-    }
-}
-
-at::Tensor&
-KMeans::pairwise_distance_out(at::Tensor& Out, at::Tensor& X, at::Tensor& Y){
-    if (this->dist_method == Euclidean) 
-        torch::norm_out(Out, X.unsqueeze(1) - Y.unsqueeze(0), 2, 2);
-    else if (this->dist_method == Cosine)
-    {
-        torch::mm_out(Out, X, Y.t());
-        Out.div_(torch::norm(X, 2, 1, true).mul(torch::norm(Y, 2, 1, true).t()) + this->epsilon).sub_(1.0).mul_(-1.0);
-    }
-    else if (this->dist_method == Manhattan)
-        torch::norm_out(Out, X.unsqueeze(1) - Y.unsqueeze(0), 1, 2);
-    else
-    {
-        printf("Error: Unknown distance method\n");
-        return Out;
-    }
-    return Out;
-}
-
-#ifdef __cplusplus
-extern "C" {
-#endif // __cplusplus
+/*
+Python C API Functions
+*/
 
 PyObject*
-KMeans_alloc(PyTypeObject *type, Py_ssize_t nitems)
+KMeans_alloc
+(PyTypeObject *type, Py_ssize_t nitems)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__alloc__\n")
     // Allocate memory for the class.
-    KMeans* ret = PyObject_New(KMeans, type);
+    PyObject* ret;
+    InitGILScope
+    ret = PyType_GenericAlloc(type, nitems);
     if (ret == NULL) return NULL;
+    ExitGILScope
     // This is not a container class,
     // so we don't need to allocate memory with Py_ssiz_t nitems.
-    ret->x_attr = PyDict_New();
-    if (ret->x_attr == NULL) return NULL;
-    return (PyObject*)ret;
+    return ret;
 }
 
 PyObject* 
-KMeans_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+KMeans_new
+(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__new__\n")
     // Generate a new instance of the class.
-    KMeans* self = (KMeans*)KMeans_alloc(type, 0);
+    PyObject* self;
+    InitGILScope
+    self = PyType_GenericNew(type, args, kwds);
+    ExitGILScope
+
+    ((m00nny::KMeans*)self)->centroids = std::make_unique<torch::Tensor>(torch::empty({0, 0}));
+    ((m00nny::KMeans*)self)->labels    = std::make_unique<torch::Tensor>(torch::empty({0}));
+    ((m00nny::KMeans*)self)->distances = std::make_unique<torch::Tensor>(torch::empty({0, 0}));
+    ((m00nny::KMeans*)self)->mask      = std::make_unique<torch::Tensor>(torch::empty({0}));
     // If the class always make new instances, (like non-singleton classes)
     // no special initialization is required.
-    if (self != NULL) KMeans_init(self, args, kwds);
-    return (PyObject*)self;
+    return self;
 }
 
 int
-KMeans_init(KMeans *self, PyObject *args, PyObject *kwds)
+KMeans_init
+(m00nny::KMeans *self, PyObject *args, PyObject *kwds)
 {
     // Initialization of the instance of the class.
     // the tp_new function is called first, and allocates memory for the class.
     // Then, the tp_init function is called to initialize the instance.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__init__\n")
 
     // Initialize the pointers to nullptr to get the parameters.
-    PyObject *n_clusters=nullptr, *max_iter=nullptr, *batchsize=nullptr, *random_state=nullptr;
-    char *init_method_str=nullptr, *dist_method_str=nullptr;
-    float epsilon = 1e-8;
+    PyObject *n_clusters      = nullptr,
+             *max_iter        = nullptr,
+             *batchsize       = nullptr,
+             *init_method_str = nullptr,
+             *dist_method_str = nullptr,
+             *random_state    = nullptr;
+
     const char* kwlist[] = {"n_clusters",
                             "max_iter",
                             "batchsize",
-                            "mode",
-                            "init",
-                            "seed",
-                            "epsilon",
+                            "init_method",
+                            "dist_method",
+                            "random_state",
                             NULL}; // Sentinel
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOOssOf", (char**)kwlist,
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|$OOOOOO", (char**)kwlist,
                                     &n_clusters,
                                     &max_iter,
                                     &batchsize,
-                                    &dist_method_str,
                                     &init_method_str,
-                                    &random_state,
-                                    &epsilon)) return -1;
+                                    &dist_method_str,
+                                    &random_state)) return -1;
+    int64_t _stack = 0;
+    IfSaveState(_stack, (n_clusters      ==nullptr) || Py_IsNone(n_clusters),      [](){ PyErr_SetString (PyExc_TypeError, "n_clusters is required.");})
+    IfSaveState(_stack, (max_iter        ==nullptr) || Py_IsNone(max_iter),        [&max_iter]()       { max_iter        = PyLong_FromLong(1000); })
+    IfSaveState(_stack, (batchsize       ==nullptr) || Py_IsNone(batchsize),       [&batchsize]()      { batchsize       = PyLong_FromLong(1024); })
+    IfSaveState(_stack, (init_method_str ==nullptr) || Py_IsNone(init_method_str), [&init_method_str](){ init_method_str = PyUnicode_FromString("kmeans++"); })
+    IfSaveState(_stack, (dist_method_str ==nullptr) || Py_IsNone(dist_method_str), [&dist_method_str](){ dist_method_str = PyUnicode_FromString("euclidean"); })
+    IfSaveState(_stack, (random_state    ==nullptr) || Py_IsNone(random_state),    [&random_state]()   { random_state    = PyLong_FromLong([](){ std::random_device rd; std::mt19937 gen(rd()); return gen(); }()); })
 
-    // Get the integer values from the Python objects.
-    if (Py_IsNone(n_clusters)) PyErr_SetString(PyExc_ValueError, "n_clusters is required");
-    if (Py_IsNone(max_iter))   PyErr_SetString(PyExc_ValueError, "max_iter is required");
-    if (Py_IsNone(batchsize))  PyErr_SetString(PyExc_ValueError, "batchsize is required");
-    KMeans_setattro(self, "n_clusters", n_clusters);
-    KMeans_setattro(self, "max_iter",   max_iter);
-    KMeans_setattro(self, "batch_size", batchsize);
+    // We have strong references to the objects, so we don't need to Py_INCREF.
+    PyObject_GenericSetAttrWithString((PyObject*)self, "n_clusters",   n_clusters);
+    PyObject_GenericSetAttrWithString((PyObject*)self, "max_iter",     max_iter);
+    PyObject_GenericSetAttrWithString((PyObject*)self, "batch_size",   batchsize);
+    PyObject_GenericSetAttrWithString((PyObject*)self, "init_method",  init_method_str);
+    PyObject_GenericSetAttrWithString((PyObject*)self, "dist_method",  dist_method_str);
+    PyObject_GenericSetAttrWithString((PyObject*)self, "random_state", random_state);
 
-    // Get the random state, if it is not provided, generate a random number.
-    long _random_state = Py_IsNone(random_state) ? [](){std::srand(std::time(0)); return (long)std::rand();}() : PyLong_AsLong(random_state);
-    KMeans_setattro(self, "random_state", PyLong_FromLong(_random_state));
-    // Get the initialization method and distance method from the strings.
-    KMeans_setattro(self, "init_method", PyUnicode_FromString(init_method_str));
-    // Get the distance method from the string.
-    KMeans_setattro(self, "dist_method", PyUnicode_FromString(dist_method_str));
+    IfRestoreState(_stack, [&random_state]()   { Py_XDECREF(random_state); })
+    IfRestoreState(_stack, [&dist_method_str](){ Py_XDECREF(dist_method_str); })
+    IfRestoreState(_stack, [&init_method_str](){ Py_XDECREF(init_method_str); })
+    IfRestoreState(_stack, [&batchsize]()      { Py_XDECREF(batchsize); })
+    IfRestoreState(_stack, [&max_iter]()       { Py_XDECREF(max_iter); })
+    IfRestoreState(_stack, [&n_clusters]()     { Py_XDECREF(n_clusters); })
+    ExitGILScope
     return 0;
 }
 
 void
-KMeans_finalize(KMeans *self)
+KMeans_finalize
+(m00nny::KMeans *self)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__finalize__\n")
     // Finalize the instance of the class.
     // This function is called the end of the life cycle of the instance.
     // This not means the deallocation of the memory by garbage collector.
-
     // In this case, nothing to do.
     return;
 }
 
 void
-KMeans_free(KMeans *self)
+KMeans_free
+(m00nny::KMeans *self)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__free__\n")
     // Free the memory for an instance of the class.
     // This function is called when the instance is deallocated.
     // If there is no shared memory between instances,
     // this function not necessaryly to do something.
-    KMeans_dealloc(self);
+    return;
 }
 
 void
-KMeans_dealloc(KMeans *self)
+KMeans_dealloc
+(m00nny::KMeans *self)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__dealloc__\n")
     // Deallocating the memory for the class.
-    Py_XDECREF(self->x_attr);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-int
-KMeans_setattro(KMeans *self, const char *name, PyObject *v)
-{
-    // Set an attribute of the instance.
-    // This function is called when the instance is assigned a value.
-    if (self->x_attr == NULL)
-    {
-        // Create a new dictionary for the attributes.
-        // This is not necessary, but for the safety.
-        self->x_attr = PyDict_New();
-        if (self->x_attr == NULL) return -1;
-    }
-
-    // If the value is None, delete the attribute.
-    if (v == NULL)
-    {
-        int rv = PyDict_DelItemString(self->x_attr, name);
-        // If the attribute is not found, raise an AttributeError.
-        if (rv < 0 && PyErr_ExceptionMatches(PyExc_KeyError))
-            PyErr_SetString(PyExc_AttributeError,
-                "delete non-existing Kmeans attribute");
-        return rv;
-    }
-
-    // Otherwise, set the attribute.
-    // This will automatically increment the reference count.
-    int rv = PyDict_SetItemString(self->x_attr, name, v);
-    // If the attribute name is about the main functions, set the c++ instance variables.
-    if      (!strcmp(name, "n_clusters"))   self->n_clusters   = PyLong_AsLong(v);
-    else if (!strcmp(name, "max_iter"))     self->max_iter     = PyLong_AsLong(v);
-    else if (!strcmp(name, "batch_size"))   self->batch_size   = PyLong_AsLong(v);
-    else if (!strcmp(name, "random_state")) self->random_state = PyLong_AsLong(v);
-    else if (!strcmp(name, "epsilon"))      self->epsilon      = PyFloat_AsDouble(v);
-    else if (!strcmp(name, "init_method"))
-    {
-        const char* init_method_str = PyUnicode_AsUTF8(v);
-        if      (!strcmp(init_method_str, "kmeans++")) self->init_method = KMeansPP;
-        else if (!strcmp(init_method_str, "random"))   self->init_method = Random;
-        else 
-        {
-            char msg[50] = "Unknown init_method: ";
-            strncat(msg, init_method_str, 28); // 28 is the left space for the message buffer.
-            PyErr_SetString(PyExc_ValueError, (const char*)msg);
-            return -1;
-        }
-    }
-    else if (!strcmp(name, "dist_method"))
-    {
-        const char* dist_method_str = PyUnicode_AsUTF8(v);
-        if      (!strcmp(dist_method_str, "euclidean")) { self->dist_method = Euclidean; }
-        else if (!strcmp(dist_method_str, "cosine"))    { self->dist_method = Cosine; }
-        else if (!strcmp(dist_method_str, "manhattan")) { self->dist_method = Manhattan; }
-        else 
-        {
-            char msg[50] = "Unknown init_method: ";
-            strncat(msg, dist_method_str, 28); // 28 is the left space for the message buffer.
-            PyErr_SetString(PyExc_ValueError, (const char*)msg);
-            return -1;
-        }
-    }
-    return rv;
-}
-
 PyObject*
-KMeans_getattro(KMeans *self, PyObject *name)
+KMeans_call(m00nny::KMeans *self, PyObject *args, PyObject *kwds)
 {
-    // Get an attribute of the instance.
-    // This function is called when the instance is accessed.
-    // If the attribute is not found, raise an AttributeError.
-    if (self->x_attr == NULL)
-    {
-        PyErr_SetString(PyExc_AttributeError,
-            "Kmeans has no attribute");
-        return NULL;
-    }
-    return PyDict_GetItem(self->x_attr, name);
-}
-
-PyObject*
-KMeans_call(KMeans *self, PyObject *args, PyObject *kwds)
-{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__call__\n")
     // This function is called when the instance is called.
     // Get the parameter, assuming it is a tensor.
     // Call the fit_predict function.
-    return fit_predict(self, args, kwds);
+    return KMeans_fit_predict(self, args, kwds);
 }
 
 PyObject*
-KMeans_str(KMeans *self)
+KMeans_str(m00nny::KMeans *self)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__str__\n")
     // This function is called when the instance is converted to a string.
     return PyUnicode_FromFormat(
-        "KMeans(n_clusters=%d, max_iter=%d, batch_size=%d, random_state=%d, init_method=%s, dist_method=%s, epsilon=%f)",
-        self->n_clusters, self->max_iter, self->batch_size, self->random_state, self->init_method, self->dist_method, self->epsilon);
+        "KMeans(n_clusters=%d, max_iter=%d, batch_size=%d, random_state=%d, init_method=%s, dist_method=%s)",
+        self->n_clusters, self->max_iter, self->batch_size, self->random_state, self->init_method_str(), self->dist_method_str());
 }
 
 PyObject*
-KMeans_repr(KMeans *self)
+KMeans_repr(m00nny::KMeans *self)
 {
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__repr__\n")
     // This function is called when the instance is printed.
     return KMeans_str(self);
 }
@@ -404,105 +296,398 @@ KMeans_repr(KMeans *self)
 /*
 C++ Class Wrapper Functions
 */
-PyObject*
-fit(KMeans *self, PyObject *args, PyObject *kwds)
-{
-    // This function is called when the fit method is called.
-    // Get the parameter, assuming it is a tensor.
-    PyObject *X;
-    const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the fit function.
-    self->fit(THPVariable_Unpack(X));
-    return Py_None;
-}
 
 PyObject*
-fit_predict(KMeans *self, PyObject *args, PyObject *kwds)
+KMeans_fit
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
 {
-    // This function is called when the fit_predict method is called.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.fit\n")
+    // This function is called when the fit is called.
     // Get the parameter, assuming it is a tensor.
-    PyObject *X;
+    PyObject *pyX;
     const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the fit_predict function.
-    return THPVariable_Wrap(self->fit_predict(THPVariable_Unpack(X)));
+
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ fit function.
+    self->fit(X);
+    InitGILScope
+    Py_XDECREF(pyX);
+    ExitGILScope
+    return Py_None;
 }
 
 PyObject*
-predict(KMeans *self, PyObject *args, PyObject *kwds)
+KMeans_fit_predict
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
 {
-    // This function is called when the predict method is called.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.fit_predict\n")
+    // This function is called when the fit_predict is called.
     // Get the parameter, assuming it is a tensor.
-    PyObject *X;
+    PyObject *pyX;
     const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the predict function.
-    return THPVariable_Wrap(self->predict(THPVariable_Unpack(X)));
+    
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ fit_predict function.
+    torch::Tensor ret = self->fit_predict(X);
+    
+    // Return the result.
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(ret);
+    Py_XDECREF(pyX);
+    ExitGILScope
+    return pyret;
 }
 
-PyObject* init_centers(KMeans *self, PyObject *args, PyObject *kwds)
+PyObject*
+KMeans_predict
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
 {
-    // This function is called when the init_centers method is called.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.predict\n")
+    // This function is called when the predict is called.
     // Get the parameter, assuming it is a tensor.
-    PyObject *X;
+    PyObject *pyX;
     const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the init_centers function.
-    at::Tensor _X = THPVariable_Unpack(X);
-    self->init_centers(_X);
+    
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ predict function.
+    torch::Tensor& ret = self->predict(X);
+    
+    // Return the result.
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(ret);
+    Py_XDECREF(pyX);
+    ExitGILScope
+    return pyret;
+}
+
+PyObject*
+KMeans_init_centers
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.init_centers\n")
+    // This function is called when the init_centers is called.
+    // Get the parameter, assuming it is a tensor.
+    PyObject *pyX;
+    const char* kwlist[] = {"x", NULL};
+    
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ init_centers function.
+    self->init_centers(X);
+    InitGILScope
+    Py_XDECREF(pyX);
+    ExitGILScope
     return Py_None;
 }
 
-PyObject* update_centers(KMeans *self, PyObject *args, PyObject *kwds)
+PyObject*
+KMeans_update_centers
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
 {
-    // This function is called when the update_centers method is called.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.update_centers\n")
+    // This function is called when the update_centers is called.
     // Get the parameter, assuming it is a tensor.
-    PyObject *X;
+    PyObject *pyX;
     const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the update_centers function.
-    at::Tensor _X = THPVariable_Unpack(X);
-    self->update_centers(_X);
+    
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ update_centers function.
+    self->update_centers(X);
+    InitGILScope
+    Py_XDECREF(pyX);
+    ExitGILScope
     return Py_None;
 }
 
-PyObject* update_labels(KMeans *self, PyObject *args, PyObject *kwds)
+PyObject*
+KMeans_update_labels
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
 {
-    // This function is called when the update_labels method is called.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.update_labels\n")
+    // This function is called when the update_labels is called.
     // Get the parameter, assuming it is a tensor.
-    PyObject *X;
+    PyObject *pyX;
     const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the update_labels function.
-    at::Tensor _X = THPVariable_Unpack(X);
-    self->update_labels(_X);
+    
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ update_labels function.
+    self->update_labels(X);
+    InitGILScope
+    Py_XDECREF(pyX);
+    ExitGILScope
     return Py_None;
 }
 
-PyObject* compute_distance_matrix (KMeans *self, PyObject *args, PyObject *kwds)
+PyObject*
+KMeans_compute_distance_matrix
+(m00nny::KMeans* self, PyObject *args, PyObject *kwds)
 {
-    // This function is called when the compute_distance_matrix method is called.
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.compute_distance_matrix\n")
+    // This function is called when the compute_distance_matrix is called.
     // Get the parameter, assuming it is a tensor.
-    PyObject *X;
+    PyObject *pyX;
     const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Call the compute_distance_matrix function.
-    at::Tensor _X = THPVariable_Unpack(X);
-    return THPVariable_Wrap(self->compute_distance_matrix(_X));
+    
+    // Get the GIL state for parsing the Python arguments.
+    torch::Tensor X;
+    InitGILScope
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &pyX)) return NULL;
+    Py_XINCREF(pyX);
+    X = THPVariable_Unpack(pyX);
+    ExitGILScope
+
+    // Call the C++ compute_distance_matrix function.
+    torch::Tensor ret = m00nny::compute_distance_matrix(X, *(self->centroids), self->batch_size, self->dist_method);
+
+    // Return the result.
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(ret);
+    Py_XDECREF(pyX);
+    ExitGILScope
+    return pyret;
 }
 
-PyObject* get_centroids(KMeans *self, PyObject *args, PyObject *kwds)
+/*
+    C++ Class Getters and Setters
+*/
+
+PyObject*
+KMeans_get_init_method
+(PyObject *self, void* closure)
 {
-    // This function is called when the get_centroids method is called.
-    // Get the parameter, assuming it is a tensor.
-    PyObject *X;
-    const char* kwlist[] = {"x", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)kwlist, &X)) return NULL;
-    // Return the centroids.
-    return THPVariable_Wrap(self->centroids);
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__get__(init_method)\n")
+    PyObject* pyret;
+    InitGILScope
+    pyret = PyUnicode_FromString(((m00nny::KMeans*)self)->init_method_str());
+    ExitGILScope
+    return pyret;
 }
 
-#ifdef __cplusplus
+PyObject*
+KMeans_get_dist_method
+(PyObject *self, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__get__(dist_method)\n")
+    PyObject* pyret;
+    InitGILScope
+    pyret = PyUnicode_FromString(((m00nny::KMeans*)self)->dist_method_str());
+    ExitGILScope
+    return pyret;
 }
-#endif // __cplusplus
+
+int
+KMeans_set_init_method
+(PyObject *self, PyObject *value, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__set__(init_method)\n")
+    InitGILScope
+    if (PyUnicode_Check(value))
+    {
+        const char* value_str = PyUnicode_AsUTF8(value);
+        if      (!strcmp(value_str, "kmeans++")) ((m00nny::KMeans*)self)->init_method = m00nny::KMeans::KMeansPP;
+        else if (!strcmp(value_str, "random"))   ((m00nny::KMeans*)self)->init_method = m00nny::KMeans::Random;
+        else 
+        {
+            char msg[200] = "Unknown init_method. The init_method must be one of 'kmeans++' or 'random': ";
+            strncat(msg, PyUnicode_AsUTF8(value), 200 - 77); // 200 - 72 is the left space for the message buffer.
+            PyErr_SetString(PyExc_ValueError, (const char*)msg);
+            return -1;
+        }
+    }
+    else if (PyLong_Check(value))
+    {
+        int8_t value_int = PyLong_AsLong(value);
+        if (value_int < 0 || value_int > 1)
+        {
+            char msg[200] = "Unknown init_method. The init_method should be 0: 'kmeans++' or 1: 'random': ";
+            strncat(msg, PyUnicode_AsUTF8(value), 200 - 72); // 200 - 77 is the left space for the message buffer.
+            PyErr_SetString(PyExc_ValueError, (const char*)msg);
+            return -1;
+        }
+        ((m00nny::KMeans*)self)->init_method = value_int;
+    }
+    else
+    {
+        PyErr_SetString(PyExc_TypeError, "The init_method must be a string or an integer.");
+        return -1;
+    }
+    ExitGILScope
+    return 0;
+}
+
+int
+KMeans_set_dist_method
+(PyObject *self, PyObject *value, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__set__(dist_method)\n")
+    InitGILScope
+    if (PyUnicode_Check(value))
+    {
+        const char* value_str = PyUnicode_AsUTF8(value);
+        if      (!strcmp(value_str, "euclidean")) ((m00nny::KMeans*)self)->dist_method = m00nny::Euclidean;
+        else if (!strcmp(value_str, "cosine"))    ((m00nny::KMeans*)self)->dist_method = m00nny::Cosine;
+        else if (!strcmp(value_str, "manhattan")) ((m00nny::KMeans*)self)->dist_method = m00nny::Manhattan;
+        else 
+        {
+            char msg[200] = "Unknown init_method. The dist_method must be one of 'euclidean', 'cosine', or 'manhattan': ";
+            strncat(msg, PyUnicode_AsUTF8(value), 200 - 92); // 200 - 92 is the left space for the message buffer.
+            PyErr_SetString(PyExc_ValueError, (const char*)msg);
+            return -1;
+        }
+    }
+    else if (PyLong_Check(value))
+    {
+        int8_t value_int = PyLong_AsLong(value);
+        if (value_int < 0)
+        {
+            char msg[200] = "Unknown init_method. The dist_method should be a non-negative integer: ";
+            strncat(msg, PyUnicode_AsUTF8(value), 200 - 72); // 200 - 77 is the left space for the message buffer.
+            PyErr_SetString(PyExc_ValueError, (const char*)msg);
+            return -1;
+        }
+        ((m00nny::KMeans*)self)->dist_method = value_int;
+    }
+    else
+    {
+        PyErr_SetString(PyExc_TypeError, "The dist_method must be a string or an integer.");
+        return -1;
+    }
+    ExitGILScope
+    return 0;
+}
+
+PyObject*
+KMeans_get_centroids
+(PyObject *self, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__get__(centroids)\n")
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(*(((m00nny::KMeans*)self)->centroids));
+    ExitGILScope
+    return pyret;
+}
+
+PyObject*
+KMeans_get_labels
+(PyObject *self, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__get__(labels)\n")
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(*(((m00nny::KMeans*)self)->labels));
+    ExitGILScope
+    return pyret;
+}
+
+PyObject*
+KMeans_get_distances
+(PyObject *self, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__get__(distances)\n")
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(*(((m00nny::KMeans*)self)->distances));
+    ExitGILScope
+    return pyret;
+}
+
+PyObject*
+KMeans_get_mask
+(PyObject *self, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__get__(mask)\n")
+    PyObject* pyret;
+    InitGILScope
+    pyret = THPVariable_Wrap(*(((m00nny::KMeans*)self)->mask));
+    ExitGILScope
+    return pyret;
+}
+
+int
+KMeans_set_centroids
+(PyObject *self, PyObject *value, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__set__(centroids)\n")
+    InitGILScope
+    *(((m00nny::KMeans*)self)->centroids) = THPVariable_Unpack(value);
+    ExitGILScope
+    return 0;
+}
+
+int
+KMeans_set_labels
+(PyObject *self, PyObject *value, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__set__(labels)\n")
+    InitGILScope
+    *(((m00nny::KMeans*)self)->labels)= THPVariable_Unpack(value);
+    ExitGILScope
+    return 0;
+}
+
+int
+KMeans_set_distances
+(PyObject *self, PyObject *value, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__set__(distances)\n")
+    InitGILScope
+    *(((m00nny::KMeans*)self)->distances) = THPVariable_Unpack(value);
+    ExitGILScope
+    return 0;
+}
+
+int
+KMeans_set_mask
+(PyObject *self, PyObject *value, void* closure)
+{
+    LIBM00NNY_DEBUG_MESSAGE("Python: KMeans.__set__(mask)\n")
+    InitGILScope
+    *(((m00nny::KMeans*)self)->mask) = THPVariable_Unpack(value);
+    ExitGILScope
+    return 0;
+}
