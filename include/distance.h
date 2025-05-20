@@ -1,8 +1,9 @@
 #ifndef LIBM00NNY_DISTANCE_H
 #define LIBM00NNY_DISTANCE_H
 
-#include "common.h"
-#include "macros.h"
+#include "common/common.h"
+#include "common/torch_common.h"
+#include "common/macros.h"
 
 namespace m00nny {
 

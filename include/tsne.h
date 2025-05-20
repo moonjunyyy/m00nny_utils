@@ -1,10 +1,10 @@
 #ifndef LIBM00NNY_TSNE_H
 #define LIBM00NNY_TSNE_H
 
-#include "common.h"
-#include "macros.h"
 #include "linalg.h"
 #include "distance.h"
+#include "common/common.h"
+#include "common/macros.h"
 
 namespace m00nny {
 

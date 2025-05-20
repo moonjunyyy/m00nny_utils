@@ -12,7 +12,7 @@ def get_file_hash(file_path: str, hash_type: str = "sha256") -> str:
             hash_obj.update(chunk)
     return hash_obj.hexdigest()
 
-def integrity_verify(file_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
+def validate_signed_file(file_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
     import os
     if hash_file_path is None: hash_file_path = os.path.join(file_path, ('.' + hash_type))
     if not os.path.isfile(hash_file_path):
@@ -21,7 +21,7 @@ def integrity_verify(file_path: str, hash_type: str = "sha256", hash_file_path: 
     if get_file_hash(file_path=file_path, hash_type=hash_type) == hash_value:
         return True
     
-def integrity_verify_dir(directory_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
+def validate_signed_dir(directory_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
     import os
     if hash_file_path is None: hash_file_path = os.path.join(directory_path, ('.' + hash_type))
     hash_dict = {}
@@ -45,14 +45,14 @@ def integrity_verify_dir(directory_path: str, hash_type: str = "sha256", hash_fi
     except Exception as e: log.warning(f"Error occurred while verifying the integrity of the directory:\n{e}")
     return False
 
-def integrity_sign(file_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
+def sign_file(file_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
     import os
     if hash_file_path is None: hash_file_path = os.path.join(file_path, ('.' + hash_type))
     with open(hash_file_path, "w") as f:
         f.write(f"{get_file_hash(file_path=file_path, hash_type=hash_type)}")
     log.debug(f"Integrity signature saved: {hash_file_path}")
 
-def integrity_sign_dir(directory_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
+def sign_dir(directory_path: str, hash_type: str = "sha256", hash_file_path: str = None) -> None:
     import os
     if hash_file_path is None: hash_file_path = os.path.join(directory_path, ('.' + hash_type))
     with open(hash_file_path, "w") as f:

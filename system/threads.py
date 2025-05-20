@@ -30,12 +30,13 @@ class _Thread:
         self.running    = False # RAW problem does not so much matter.
         self.done       = False # RAW problem does not so much matter.
         self.__depth = parent_thread.__depth + 1
+        
         # Generate the thread id with 16 bytes.
         # (2 ** 16 available thread id for each depth, former bytes comes from the parent thread id)
         __id = os.urandom(2).hex()
-        self.__parent_thread = parent_thread
-        self.__thread_id     = parent_thread.__thread_id + __id
-        self.__head          = parent_thread.__head
+        self.__parent_thread       = parent_thread
+        self.__thread_id           = parent_thread.__thread_id + __id
+        self.__head                = parent_thread.__head
         self.__parent_thread[__id] = self
         if self.__depth > self.__head.__max_depth: self.__head.__max_depth = self.__depth
         self.__class__.__threads[self.__thread_id] = self
@@ -101,19 +102,19 @@ class _Thread:
         self.done       = True
 
     def __eq__(self, other) -> bool:
-        if   isinstance(other, int):               return self.__thread_id == other
+        if   isinstance(other, int): return self.__thread_id == other
         elif isinstance(other, _Thread): return self.__thread_id == other.__thread_id
         return False
     
     def __gt__(self, other) -> bool:
         # For thread sorting, the thread with the lower, newer depth is the last.
-        if self.__depth != other.__depth: return self.__depth      < other.__depth
-        else:                         return self.__added_time > other.__added_time
+        if self.__depth != other.__depth: return self.__depth < other.__depth
+        else: return self.__added_time > other.__added_time
     
     def __lt__(self, other) -> bool:
         # For thread sorting, the thread with the higher, older depth is the first.
-        if self.__depth != other.__depth: return self.__depth      > other.__depth
-        else:                         return self.__added_time < other.__added_time
+        if self.__depth != other.__depth: return self.__depth > other.__depth
+        else: return self.__added_time < other.__added_time
     
     def add_child(self, thread_id:str=None, group=None, target=None, name=None, daemon=False, args=(), kwargs={}) -> str:
         if thread_id is None:
@@ -144,6 +145,18 @@ class _Thread:
     def num_done(self) -> int:
         if self.__is_head: return sum([_th.done for _th in self.__threads.values()])
 
+    @property
+    def num_waiting_with_depth(self) -> int:
+        return sum([not (_th.running or _th.done) for _th in self.__threads.values() if _th.__depth == self.__depth])
+    
+    @property
+    def num_running_with_depth(self) -> int:
+        return sum([_th.running for _th in self.__threads.values() if _th.__depth == self.__depth])
+
+    @property
+    def num_done_with_depth(self) -> int:
+        return sum([_th.done for _th in self.__threads.values() if _th.__depth == self.__depth])
+
     def __iter__(self):
         if self.__is_head: return iter(list(self.__class__.__threads.values()).sort())
         return self.__head.__iter__()
@@ -151,24 +164,6 @@ class _Thread:
     def __str__(self) -> str:
         return f"Thread id: {self.__thread_id}, Depth: {self.__depth}, Max depth: {self.__max_depth}"
     
-# class _Thread(threading.Thread):
-#     '''
-#     Thread implementation with return value.
-#     This class is actually a wrapper of the threading.Thread class.
-#     '''
-#     def __init__(self, group=None, target=None, name=None, daemon=False, args=(), kwargs={}) -> None:
-#         super().__init__(group=group, target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
-#         self._return = None
-    
-#     def run(self) -> None:
-#         try:
-#             if self._target is not None: self._return = self._target(*self._args, **self._kwargs)
-#         except Exception as e: self._return = ThreadException(f"Thread raised an exception: {str(e)}\n" + traceback.format_exc())
-
-#     def join(self, *args):
-#         super().join(*args)
-#         return self._return
-
 # Singleton style Thread queue, which is used to manage the threads
 class _Thread_Pool:
     '''
@@ -208,8 +203,9 @@ class _Thread_Pool:
     
     def enqueue(self, id) -> None:
         with self.__lock:
-            self.__thread_queue.append(self.__master_thread.find_by_id(thread_id=id))
-
+            __th = self.__master_thread.find_by_id(thread_id=id)
+            self.__thread_queue.append(__th)
+            
     def wait(self, id) -> None:
         self.__master_thread.find_by_id(thread_id=id).join()
 
@@ -224,9 +220,9 @@ class _Thread_Pool:
                 with self.__lock:
                     self.__thread_queue.sort() # Sort the thread queue by the thread depth and lifetime.
                     __th = self.__thread_queue.pop(0)
+                    while __th.num_running_with_depth >= self.__running_thread_max: asyncio.run(asyncio.sleep(0.01))
                     __th.run()
             except Exception as e: print(f"Thread manager raised an exception: {e}" + traceback.format_exc())
-
 class Thread:
     '''
     Thread class with return value.

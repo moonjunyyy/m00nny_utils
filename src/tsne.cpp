@@ -78,7 +78,7 @@ m00nny::TSNE::exact
     else 
         this->pnorm(state, this->dist_method);
     this->joint_probabilities(state, perplexity);
-    state->S -= torch::matmul(inverse(state->ddKL_dSdSt), state->dKL_dS);
+    state->S -= torch::matmul(m00nny::inverse(state->ddKL_dSdSt), state->dKL_dS);
 }
 
 void
@@ -98,7 +98,7 @@ m00nny::TSNE::barnes_hut
     else 
         this->pnorm(substate.get(), this->dist_method);
     this->joint_probabilities(substate.get(), perplexity);
-    tree -= torch::matmul(inverse(substate->ddKL_dSdSt), substate->dKL_dS);
+    tree -= torch::matmul(m00nny::inverse(substate->ddKL_dSdSt), substate->dKL_dS);
 }
 
 void 

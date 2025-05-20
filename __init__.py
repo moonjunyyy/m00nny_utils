@@ -17,8 +17,8 @@ def __bootstrap__() -> None:
     import torch
     import shutil
     from .util.version import Version
-    from .util.integrity_verify import integrity_verify_dir, integrity_sign_dir
-    from .install.install_requirements import install_cuda_libs, install_libtorch, install_nvtx
+    from .util.signdir import validate_signed_dir, sign_dir
+    from .install.install_requirements import install_cuda_libs, install_libtorch
 
     __lock = mp.Lock()
     FORCE_BUILD: int    = int(os.environ.get("LIBM00NNY_FORCE_REBUILD",  "0"))
@@ -30,23 +30,23 @@ def __bootstrap__() -> None:
     OS_VERSION: str     = _os_info.release
     OS_ARCH: str        = _os_info.machine.lower()
     
-    _torch_version = torch.__version__
-    _cuda_version = torch.version.cuda
-    _torch_cudnn_version = torch.backends.cudnn.version() # 90100
-    USE_CXX11_ABI: bool = torch._C._GLIBCXX_USE_CXX11_ABI # True or False
+    _torch_version      = torch.__version__
+    _cuda_version       = torch.version.cuda
+    _torch_cudnn_version    = torch.backends.cudnn.version() # 90100
+    USE_CXX11_ABI: bool     = torch._C._GLIBCXX_USE_CXX11_ABI # True or False
     
-    PYTHON_PATH: str        = sys.executable
+    PYTHON_PATH:    str     = sys.executable
     PYTHON_VERSION: Version = Version(sys.version)
-    TORCH_VERSION: Version  = Version(_torch_version)
-    CUDA_VERSION: Version   = Version(_cuda_version)
-    CUDNN_VERSION: Version  = Version(_torch_cudnn_version // 10000, _torch_cudnn_version % 10000 // 100, _torch_cudnn_version % 100)
+    TORCH_VERSION:  Version = Version(_torch_version)
+    CUDA_VERSION:   Version = Version(_cuda_version)
+    CUDNN_VERSION:  Version = Version(_torch_cudnn_version // 10000, _torch_cudnn_version % 10000 // 100, _torch_cudnn_version % 100)
     
-    USE_NVTX: int        = int(os.environ.get("LIBM00NNY_USE_NVTX",       "1"))
-    USE_CUDNN: int       = int(os.environ.get("LIBM00NNY_USE_CUDNN",      "1"))
-    USE_CUDSS: int       = int(os.environ.get("LIBM00NNY_USE_CUDSS",      "1"))
-    USE_CUSPARSELT: int  = int(os.environ.get("LIBM00NNY_USE_CUSPARSELT", "1"))
+    USE_CUDNN: int      = int(os.environ.get("LIBM00NNY_USE_CUDNN",      "1"))
+    USE_CUDSS: int      = int(os.environ.get("LIBM00NNY_USE_CUDSS",      "1"))
+    USE_CUSPARSELT: int = int(os.environ.get("LIBM00NNY_USE_CUSPARSELT", "1"))
+    USE_NCCL: int       = int(os.environ.get("LIBM00NNY_USE_NCCL",       "1"))
 
-    DEBUG: int           = int(os.environ.get("LIBM00NNY_DEBUG",          "0"))
+    DEBUG: int          = int(os.environ.get("LIBM00NNY_DEBUG",          "0"))
 
     # Check the GCC, G++, CMake
     assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "gcc")), "GCC path not found."
@@ -54,10 +54,14 @@ def __bootstrap__() -> None:
     assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "cmake")), "CMake path not found."
 
     with __lock:
+        _cmake_paths = []
+        
         # Check the CUDA Toolkit
         CUDA_PATH = install_cuda_libs(lib_name="cuda", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=CUDA_VERSION, cuda_version=CUDA_VERSION, condition=lambda kv: kv[1]['license'] == "CUDA Toolkit")
-        assert os.path.isfile(path=os.path.join(CUDA_PATH, "bin", "nvcc")), "Nvcc path not found."
-        _cmake_paths = [CUDA_PATH]
+        assert os.path.isfile(path=os.path.join(CUDA_PATH, "bin", "nvcc")), "Nvcc path not found. Check the CUDA Toolkit installation."
+        assert os.path.isfile(path=os.path.join(CUDA_PATH, "lib64", "libcudart.so")), "CUDA shared library path not found. Check the CUDA Toolkit installation."
+        _cmake_paths.append(CUDA_PATH)
+
         # Check the Libtorch
         LIBTORCH_PATH = install_libtorch(os_name=OS, root_dir=ROOT_DIR, version=TORCH_VERSION, cuda_version=CUDA_VERSION, use_cxx11_abi=USE_CXX11_ABI)
         assert os.path.isfile(path=os.path.join(LIBTORCH_PATH, "lib", "libtorch.so")), "Libtorch shared library path not found."
@@ -78,9 +82,15 @@ def __bootstrap__() -> None:
             CUSPARSELT_PATH = install_cuda_libs(lib_name="cusparselt", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=None, cuda_version=CUDA_VERSION, condition=lambda kv: True)
             assert os.path.isfile(path=os.path.join(CUSPARSELT_PATH, "lib", "libcusparseLt.so")), "CuSparseLT shared library path not found."
             _cmake_paths.append(CUSPARSELT_PATH)
-        # Check the NVTX
-        if USE_NVTX:
-            _ = install_nvtx(root_dir=CURRENT_DIR)
+        if USE_NCCL:
+            # Check the NCCL
+            try:
+                NCCL_PATH = [path for path in os.listdir(path=os.path.join(ROOT_DIR)) if "nccl" in path.lower() and os.path.isdir(os.path.join(ROOT_DIR, path))][0]
+                NCCL_PATH = os.path.join(ROOT_DIR, NCCL_PATH)
+                log.info(f"Found the NCCL path: {NCCL_PATH}")
+            except Exception as e:
+                assert os.path.isfile(path=os.path.join(NCCL_PATH, "lib", "libnccl.so")), "NCCL shared library path not found. NCCL cannot be downloaded automatically. Please install NCCL manually in the root directory."
+            _cmake_paths.append(NCCL_PATH)
         try:
             if FORCE_BUILD: log.info("Forcing to build the shared library..."); raise RuntimeError("Forcing to build the shared library...")
             _lib_installation_path = os.path.join(CURRENT_DIR, "debug" if DEBUG else "release")
@@ -96,13 +106,13 @@ def __bootstrap__() -> None:
                 _info["CUDNN"]      == str(CUDNN_VERSION) if USE_CUDNN else None and\
                 _info["CUDSS"]      == USE_CUDSS if USE_CUDSS else None and\
                 _info["CUSPARSELT"] == USE_CUSPARSELT if USE_CUSPARSELT else None and\
-                _info["NVTX"]       == USE_NVTX if USE_NVTX else None):
+                _info["NCCL"]       == USE_NCCL if USE_NCCL else None):
                     raise RuntimeError("Shared library is not up-to-date.")
                 
             if not (\
-                integrity_verify_dir(directory_path=os.path.join(CURRENT_DIR, "src"),     
+                validate_signed_dir(directory_path=os.path.join(CURRENT_DIR, "src"),     
                                      hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.src.sha256')) and\
-                integrity_verify_dir(directory_path=os.path.join(CURRENT_DIR, "include"), 
+                validate_signed_dir(directory_path=os.path.join(CURRENT_DIR, "include"), 
                                      hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.include.sha256'))):
                 raise RuntimeError("Source code is changed.")
             log.info("Shared library is up-to-date.\n")
@@ -119,7 +129,7 @@ def __bootstrap__() -> None:
             log.debug(f"{'CUDNN info:':<20}{CUDNN_VERSION if USE_CUDNN else None}")
             log.debug(f"{'CUDSS info:':<20}{USE_CUDSS if USE_CUDSS else None}")
             log.debug(f"{'CUSPARSELT info:':<20}{USE_CUSPARSELT if USE_CUSPARSELT else None}")
-            log.debug(f"{'NVTX info:':<20}{USE_NVTX if USE_NVTX else None}")
+            log.debug(f"{'NCCL info:':<20}{USE_NCCL if USE_NCCL else None}")
             log.debug(f"{'Debug mode:':<20}{'Debug' if DEBUG else 'Release'}")
             log.debug(f"{'Module path:':<20}{CURRENT_DIR}")
             log.debug(f"CMAKE paths:\n\t{'\n\t'.join(_cmake_paths)}")
@@ -134,8 +144,8 @@ mkdir objdir
 cd objdir
 cmake .. \\
 -DPREFIX_PATH={CURRENT_DIR} \\
--DCMAKE_C_COMPILER={ROOT_DIR}/bin/gcc \\
--DCMAKE_CXX_COMPILER={ROOT_DIR}/bin/g++ \\
+-DCMAKE_C_COMPILER={os.path.join(ROOT_DIR, "bin", "gcc")} \\
+-DCMAKE_CXX_COMPILER={os.path.join(ROOT_DIR, "bin", "g++")} \\
 -DCMAKE_CUDA_COMPILER={CUDA_PATH}/bin/nvcc \\
 -DUSE_CUDSS={USE_CUDSS} \\
 -DCAFFE2_USE_CUDNN={USE_CUDNN} \\
@@ -177,20 +187,17 @@ rm -rf objdir
                             "CUDNN":      str(CUDNN_VERSION) if USE_CUDNN else None,
                             "CUDSS":      USE_CUDSS if USE_CUDSS else None,
                             "CUSPARSELT": USE_CUSPARSELT if USE_CUSPARSELT else None,
-                            "NVTX":       USE_NVTX if USE_NVTX else None},
+                            "NCCL":       USE_NCCL if USE_NCCL else None},
                         fp=f, indent=2)
-            integrity_sign_dir(directory_path=os.path.join(CURRENT_DIR, "src"),
+            sign_dir(directory_path=os.path.join(CURRENT_DIR, "src"),
                                hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.src.sha256'))
-            integrity_sign_dir(directory_path=os.path.join(CURRENT_DIR, "include"),
+            sign_dir(directory_path=os.path.join(CURRENT_DIR, "include"),
                                hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.include.sha256'))
     import importlib.util
-    from .system.path_tree import PathTree
     _lib_path = os.path.dirname(p=os.path.abspath(path=__file__))
     _lib_path = os.path.join(_lib_path, "debug" if DEBUG else "release", "lib", "libm00nny_utils.so")
     log.debug(f"Loading {_lib_path}...")
-    module_name = _lib_path.split(".")[0].replace("lib", "")
     module_name = "m00nny_utils"
-    log.debug(f"Searching {module_name}...")
     spec = importlib.util.spec_from_file_location(name=f"{module_name}", location=_lib_path)
     module = importlib.util.module_from_spec(spec=spec)
     spec.loader.exec_module(module=module)

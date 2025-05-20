@@ -1,12 +1,10 @@
 #ifndef LIBM00NNY_KMEANS_H
 #define LIBM00NNY_KMEANS_H
 
-#include "common.h"
-#include "macros.h"
+#include "common/common.h"
+#include "common/macros.h"
 #include "distance.h"
-
 namespace m00nny {
-
 class KMeans {
 public:    
     PyObject_HEAD;

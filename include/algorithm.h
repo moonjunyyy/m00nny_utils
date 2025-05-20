@@ -1,8 +1,8 @@
 #ifndef LIBM00NNY_ALGORITHM_H
 #define LIBM00NNY_ALGORITHM_H
 
-#include "common.h"
-#include "macros.h"
+#include "common/common.h"
+#include "common/macros.h"
 #include "tsne.h"
 #include "kmeans.h"
 

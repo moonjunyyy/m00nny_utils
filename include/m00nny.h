@@ -1,8 +1,8 @@
 #ifndef LIBM00NNY_H
 #define LIBM00NNY_H
 
-#include "common.h"
-#include "macros.h"
+#include "common/common.h"
+#include "common/macros.h"
 #include "linalg.h"
 #include "distance.h"
 #include "algorithm.h"

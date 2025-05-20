@@ -216,5 +216,6 @@ class PathTree(PathNode):
         self.size = 0
         self.children=[]
         self.parse()
+        
     @property
     def path(self) -> str: return self.name

@@ -19,7 +19,7 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -fPIC")
 
 # Set the project name
-project(M00NNY_Utils VERSION 1.0.0 DESCRIPTION "A collection of utility functions" LANGUAGES CXX CUDA)
+project(M00NNY_Utils VERSION 1.0.0 DESCRIPTION "A collection of utility functions" LANGUAGES C CXX CUDA)
 set(TARGET_NAME "m00nny_utils")
 
 # Set the installation prefix

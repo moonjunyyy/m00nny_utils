@@ -1,142 +1,268 @@
 #include "linalg.h"
 
-torch::Tensor
-m00nny::kronecker_product(torch::Tensor& X, torch::Tensor& Y)
-{
-    /*
-    Kronecker Product of two tensors.
-    This assumes the output tensor is a 4D tensor, not actually a Kronecker product, Tensor product.
-    The output tensor is the element-wise multiplication of the two tensors.
 
-    Args:
-        X (torch::Tensor): The first input tensor.  (*, n, m)
-        Y (torch::Tensor): The second input tensor. (*, p, q)
-
-    Returns:
-        torch::Tensor: The output tensor. (*, n, p, m, q)
-    */
-    int64_t dim_X = X.dim();
-    int64_t dim_Y = Y.dim();
-
-    if (dim_X != dim_Y || dim_X < 2 || dim_Y < 2)
-    {
-        LIBM00NNY_ERROR_MESSAGE("The input tensors must have the same number of dimensions greater than 1.\n")
-        return torch::Tensor();
+void
+m00nny::internal::check_square(const torch::Tensor& X, const std::string& func_name) {
+    if (X.dim() < 2) {
+        throw std::runtime_error(func_name + ": Input tensor must have at least 2 dimensions. Got " + std::to_string(X.dim()));
     }
-
-    c10::IntArrayRef size_X = X.sizes();
-    c10::IntArrayRef size_Y = Y.sizes();
-
-    int64_t n = size_X[dim_X - 2], m = size_X[dim_X - 1];
-    int64_t p = size_Y[dim_Y - 2], q = size_Y[dim_Y - 1];
-
-    int64_t num_matrix = 1;
-    for (int64_t i = 0; i < dim_X; i++)
-    {
-        if (i < dim_X - 2)
-        {
-            num_matrix *= size_X[i];
-            if (size_X[i] != size_Y[i])
-            {
-                LIBM00NNY_ERROR_MESSAGE("The input tensors must have the same shape except for the last two dimensions.\n")
-                return torch::Tensor();
-            }
-        }
+    int64_t n = X.size(-2);
+    int64_t m = X.size(-1);
+    if (n != m) {
+        throw std::runtime_error(func_name + ": Input tensor's last two dimensions must be square. Got (" +
+                                std::to_string(n) + ", " + std::to_string(m) + ")");
     }
-
-    torch::Tensor X_reshape = X.view({num_matrix, n, 1, m, 1});
-    torch::Tensor Y_reshape = Y.view({num_matrix, 1, p, 1, q});
-
-    auto target_size = X_reshape.sizes().vec();
-    target_size[dim_X - 4] = n;
-    target_size[dim_X - 3] = p;
-    target_size[dim_X - 2] = m;
-    target_size[dim_X - 1] = q;
-
-    torch::Tensor Out = torch::empty(target_size, X.options());
-    torch::Tensor Out_reshape = Out.view({num_matrix, n, p, m, q});
-    torch::mul_out(Out_reshape, X_reshape, Y_reshape);
-    return Out;
 }
 
-torch::Tensor
-m00nny::inverse(torch::Tensor& X)
-{
-    /*
-    Get the inverse matrix of given tensor X.
-    This function assumes that the input tensor is a square matrix.
-    This function uses the Gauss-Jordan Elimination Method, takes little more time, getting little more accurate.
+// torch::Tensor
+// m00nny::inverse(const torch::Tensor& X_const) {
+//     LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::inverse\n");
+//     m00nny::internal::check_square(X_const, "m00nny::inverse");
 
-    Args:
-        X (torch::Tensor): The input tensor. (*, n, n)
+//     int64_t B = 1;
+//     auto dims = X_const.dim();
+//     const int64_t N = X_const.size(-1);
+//     for (int64_t i = 0; i < dims - 2; ++i) { B *= X_const.size(i); }
 
-    Returns:
-        torch::Tensor: The output tensor. (*, n, n)
-    */
-    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::inverse\n")
-    c10::IntArrayRef size = X.sizes();
-    int64_t dim = X.dim();
-    int64_t n   = size[dim - 2];
-    int64_t m   = size[dim - 1];
-    // If the input tensor is not a square matrix, return the input tensor.
-    int64_t num_matrix = 1;
-    for (int64_t i = 0; i < dim - 2; i++) num_matrix *= size[i];
+//     const double epsilon = 1e-12;
+//     auto options = X_const.options();
     
-    // Make Identity Matrix with the same shape as the input tensor.
-    // Use the Gauss-Jordan Elimination Method to calculate the inverse matrix.
-    torch::Tensor I = torch::eye(n, m, X.options()).unsqueeze(0).repeat({num_matrix, 1, 1});
-    torch::Tensor A = torch::cat({X.view({num_matrix, n, m}), I.view({num_matrix, n, m})}, 2); // A : (*, n, 2m) where n = m. A is the augmented matrix.
-    torch::Tensor num_arange = torch::arange(0, num_matrix, 1, X.options().dtype(torch::kLong)); // indexing tensor.
-    torch::Tensor arange     = torch::arange(0, n, 1, X.options().dtype(torch::kLong)).unsqueeze(0).repeat({num_matrix, 1}); // rearrange buffer for row swapping.
-    torch::Tensor _buffer    = torch::empty_like(A); // buffer for row elimination.
-    torch::Tensor _buffer_flatten = _buffer.view({num_matrix * n * 2 * m}); // buffer for row elimination.
-    torch::Tensor _temp     = torch::empty({num_matrix}, X.options().dtype(torch::kLong)); // Temporary tensor for row swapping.
-    torch::Tensor max_idx   = torch::empty({num_matrix}, X.options().dtype(torch::kLong)); // buffer for getting the index of the maximum value.
-    torch::Tensor max_value = torch::empty({num_matrix}, X.options()); // buffer for getting the maximum value.
-    torch::Tensor Aslice;
-    torch::Tensor _temp_index;
-    torch::Tensor _buffer_vector;
-    for (int64_t i = 0; i < n; i++)
-    {
-        // Select the row with maximum value in the i-th column.
-        // max calculation is O(n).
-        _buffer_vector = _buffer_flatten.slice(0, 0, num_matrix * (n-i));
-        _buffer_vector = _buffer_vector.view({num_matrix, n-i});
-        _temp_index = arange.slice(1, i, n, 1);
-        _temp_index = _temp_index.view({num_matrix, n-i});
-        Aslice = A.index({num_arange.unsqueeze(1), _temp_index, i}).view({num_matrix, n-i});
-        torch::abs_out(_buffer_vector, Aslice);
-        torch::argmax_out(_temp, _buffer_vector, 1); // max_idx : (*)
-        torch::add_out(max_idx, _temp, i); // max_idx : (*)
+//     // Initial augmented matrix (B, N, 2N)
+//     torch::Tensor A_aug = torch::cat({
+//         X_const.clone().reshape({B, N, N}),
+//         torch::eye(N, options).unsqueeze(0).expand({B, N, N}).clone()
+//     }, 2);
 
-        // Swap the rows. swap is O(1).
-        _temp_index = arange.index({num_arange, max_idx}); // _temp_index : (*)
-        _temp.copy_(arange.index({num_arange, i}));        // _temp : (*)
-        arange.index_put_({num_arange, i}, _temp_index);   // arange : (*, n)
-        arange.index_put_({num_arange, max_idx}, _temp);   // arange : (*, n)
+//     // Row permutation buffer (B, N)
+//     torch::Tensor row_perm = torch::arange(N, options.dtype(torch::kLong)).unsqueeze(0).expand({B, N}).clone();
+//     torch::Tensor batch_idx = torch::arange(B, options.dtype(torch::kLong));
+//     torch::Tensor all_k = torch::arange(N, options.dtype(torch::kLong));
+//     torch::Tensor mask = torch::empty({B, N}, options.dtype(torch::kBool));
+    
+//     torch::Tensor long_buffer1 = torch::empty({B, N}, options.dtype(torch::kLong));
+//     torch::Tensor long_buffer2 = torch::empty({B, N}, options.dtype(torch::kLong));
+//     torch::Tensor float_buffer1 = torch::empty({B, N, 2 * N}, options);
+//     torch::Tensor float_buffer2 = torch::empty({B, N, 2 * N}, options);
+//     torch::Tensor float_buffer3 = torch::empty({B, N, 2 * N}, options);
 
-        max_value.copy_(A.index({num_arange, _temp_index, i})); // max_value : (*)
-        _buffer.fill_(1); // _buffer : (*, n, 2m)
-        _buffer.index_put_({num_arange, _temp_index}, max_value); // _buffer : (*, n, 2m)
-        _buffer.reciprocal_();
-        A.mul_(_buffer); // A : (*, n, 2m)
+//     for (int64_t i = 0; i < N; ++i) {
+//         // === 1. Find pivot ===
+//         torch::Tensor remaining_rows = row_perm.slice(1, i, N);              // (B, N-i)
+//         torch::Tensor slice_rows = float_buffer1.slice(1, 0, N-i);
+//         torch::gather_out(slice_rows, A_aug, 1, remaining_rows.unsqueeze(-1).expand({B, N - i, 2 * N}));
+//         printf("4\n");
         
-        // Eliminate the i-th column.
-        // eliminate is O(n^2).
-        torch::mul_out(_buffer, A.index({num_arange, _temp_index}).unsqueeze(1),
-                                A.slice(2, i, i+1, 1)); // (*, 1, 2m) * (*, n, 1) = (n, 2m)
-        _buffer.index_put_({num_arange, _temp_index}, 0); // (*, n, 2m)
-        A.sub_(_buffer); // (n, 2m) - (n, 2m) = (n, 2m)
-    }
-    // Total complexity is O(n^3).
-    // Now, the left side of the matrix A is the identity matrix, and the right side is the inverse matrix.
-    A = A.slice(2, n, 2*n, 1); // A : (*, n, m) where n = m. A is the inverse matrix.
-    A = A.index({num_arange.repeat_interleave(n), arange.view({-1})}).reshape(size); // A : (*, n, m) where n = m. A is the inverse matrix.
-    return A;
+//         torch::Tensor col_i = float_buffer2.slice(1, 0, N-i).slice(2, 0, 1).select(2, 0);
+//         col_i.copy_(slice_rows.select(2, i).abs());
+//         printf("5\n");
+        
+//         auto [_, rel_pivot] = col_i.max(1);
+//         torch::Tensor pivot_idx = rel_pivot + i;  // (B,)
+//         printf("6\n");
+
+//         // === 2. row_perm swap ===
+//         torch::Tensor current = row_perm.index({batch_idx, torch::full({B}, i, row_perm.options().dtype(torch::kLong))});
+//         torch::Tensor pivot = row_perm.index({batch_idx, pivot_idx});
+//         row_perm.index_put_({batch_idx, i}, pivot);
+//         row_perm.index_put_({batch_idx, pivot_idx}, current);
+//         printf("7\n");
+
+//         // === 3. Normalize pivot row ===
+//         // 별도의 버퍼 사용
+        
+//         torch::Tensor pivot_row_indices = long_buffer2.slice(1, 0, 1);
+//         pivot_row_indices.copy_(row_perm.index({batch_idx, i}));
+//         printf("8\n");
+        
+//         torch::Tensor pivot_rows = A_aug.gather(1, pivot_row_indices.unsqueeze(-1).expand({B, 1, 2*N}));
+//         torch::Tensor pivot_vals = pivot_rows.index({torch::indexing::Slice(), i});
+//         if (pivot_vals.abs().lt(epsilon).any().item<bool>()) {
+//             throw std::runtime_error("Singular matrix encountered.");
+//         }
+//         printf("9\n");
+
+//         torch::Tensor pivot_rows_normalized = float_buffer3.slice(1, 0, 1);
+//         torch::div_out(pivot_rows_normalized, pivot_rows, pivot_vals.unsqueeze(-1).expand({B, 1, 2*N}));
+//         A_aug.scatter_(1, pivot_row_indices, pivot_rows_normalized.unsqueeze(1));
+//         printf("10\n");
+        
+//         // === Remove pivot column from all rows (except i) ===
+//         torch::not_equal_out(mask, all_k.unsqueeze(0).expand_as(mask), i);
+//         printf("11\n");
+        
+//         // 별도의 버퍼 사용
+//         torch::Tensor valid_k = all_k.masked_select(mask[0]);
+//         torch::Tensor row_k_ids = row_perm.index({
+//             batch_idx.unsqueeze(1), 
+//             valid_k.unsqueeze(0).expand({B, N-1})
+//         });
+
+//         torch::Tensor gather_idx_k = row_k_ids.unsqueeze(-1).expand({B, N-1, 2*N});
+//         torch::Tensor rows_k = float_buffer3.slice(1, 0, N-1);
+//         rows_k.copy_(A_aug.gather(1, gather_idx_k));
+//     }
+
+//     // === 5. Reorder output rows ===
+//     torch::Tensor final_indices = row_perm.unsqueeze(-1).expand({B, N, 2*N});
+//     torch::Tensor reordered = A_aug.gather(1, final_indices);
+//     return reordered.slice(2, N, 2*N).reshape_as(X_const);
+// }
+
+torch::Tensor
+m00nny::inverse(const torch::Tensor& X_const) {
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::inverse\n");
+    m00nny::internal::check_square(X_const, "m00nny::inverse");
+
+    int64_t B = 1;
+    auto dims = X_const.dim();
+    const int64_t N = X_const.size(-1);
+    for (int64_t i = 0; i < dims - 2; ++i) { B *= X_const.size(i); }
+
+    const double epsilon = 1e-12;
+    auto options = X_const.options();
+    
+    // Initial augmented matrix (B, N, 2N)
+    torch::Tensor A_aug = torch::cat({
+        X_const.clone().reshape({B, N, N}),
+        torch::eye(N, options).unsqueeze(0).expand({B, N, N}).clone()
+    }, 2);
+
+    // Row permutation buffer (B, N)
+    torch::Tensor row_perm = torch::arange(N, options.dtype(torch::kLong)).unsqueeze(0).expand({B, N}).clone();
+    torch::Tensor batch_idx = torch::arange(B, options.dtype(torch::kLong));
+    torch::Tensor all_k = torch::arange(N, options.dtype(torch::kLong));
+    torch::Tensor mask = torch::empty({B, N}, options.dtype(torch::kBool));
+    
+    // Buffers
+    torch::Tensor long_buffer1 = torch::empty({B, N}, options.dtype(torch::kLong)); // Not used in this version, but kept if needed
+
+    // Re-sized buffers to be more specific if N is small. Max N rows needed.
+    torch::Tensor float_buffer1 = torch::empty({B, N, 2 * N}, options); // Used for slice_rows, pivot_row_data, rows_to_update
+    torch::Tensor float_buffer2 = torch::empty({B, N, 2 * N}, options); // Used for col_i intermediate
+    torch::Tensor float_buffer3 = torch::empty({B, N, 2 * N}, options); // Used for pivot_row_normalized
+
+    for (int64_t i = 0; i < N; ++i) {
+        // === 1. Find pivot ===
+        torch::Tensor remaining_rows_perm_indices = row_perm.slice(1, i, N); // (B, N-i). Original row indices at permuted positions i..N-1.
+        
+        // Use a slice of float_buffer1 for slice_rows
+        torch::Tensor slice_rows = float_buffer1.slice(1, 0, N - i); // (B, N-i, 2N)
+        torch::gather_out(slice_rows, A_aug, 1, remaining_rows_perm_indices.unsqueeze(-1).expand({B, N - i, 2 * N}));
+        
+        // Use a slice of float_buffer2 for col_i magnitude storage
+        torch::Tensor col_i_magnitudes = float_buffer2.slice(1, 0, N-i).slice(2,0,1).select(2,0); // (B, N-i)
+        col_i_magnitudes.copy_(slice_rows.select(2, i).abs()); // Get column 'i' of the selected rows
+        
+        auto [_, rel_pivot_pos] = col_i_magnitudes.max(1); // (B,) indices relative to the (N-i) slice
+        torch::Tensor abs_pivot_perm_idx = rel_pivot_pos + i;  // (B,) permuted index of the chosen pivot row
+
+        // === 2. row_perm swap ===
+        // Swap original row indices in `row_perm` at permuted positions `i` and `abs_pivot_perm_idx`
+        torch::Tensor current_val_at_perm_i = row_perm.index({batch_idx, torch::full({B}, i, row_perm.options().dtype(torch::kLong))}).clone(); // (B,)
+        torch::Tensor pivot_val_at_perm_pivot_idx = row_perm.index({batch_idx, abs_pivot_perm_idx}); // (B,)
+        row_perm.index_put_({batch_idx, i}, pivot_val_at_perm_pivot_idx);
+        row_perm.index_put_({batch_idx, abs_pivot_perm_idx}, current_val_at_perm_i);
+
+        // === 3. Normalize pivot row ===
+        // Get the *original row index* of the row that is now at permuted position `i`. This is the true pivot row index in A_aug.
+        torch::Tensor pivot_row_original_indices = row_perm.index({batch_idx, i}); // Shape (B,)
+
+        // For gather/scatter, indices often need to be (B,1). Let's make a (B,1) version.
+        torch::Tensor pivot_row_original_indices_B1 = pivot_row_original_indices.unsqueeze(1); // Shape (B,1)
+        // Original line that had Error 0:
+        // torch::Tensor pivot_row_indices = long_buffer2.slice(1, 0, 1);
+        // pivot_row_indices.copy_(row_perm.index({batch_idx, i})); // ERROR 0: Shape mismatch (B,1) vs (B,)
+        // Corrected implicit fix: We now use pivot_row_original_indices_B1 which is correctly shaped.
+        
+        // Gather the actual pivot row data from A_aug into a temporary buffer (a slice of float_buffer1).
+        torch::Tensor current_pivot_row_data = float_buffer1.slice(1,0,1); // (B,1,2N)
+        current_pivot_row_data.copy_(A_aug.gather(1, pivot_row_original_indices_B1.unsqueeze(2).expand({B, 1, 2*N})));
+        // Original: torch::Tensor pivot_rows = A_aug.gather(1, pivot_row_indices.unsqueeze(-1).expand({B, 1, 2*N})); (This line was fine if pivot_row_indices was (B,1))
+
+        // Extract the pivot element value: A_aug[true_pivot_idx, i]
+        // current_pivot_row_data is (B,1,2N). We need element (b,0,i). Result (B,).
+        torch::Tensor pivot_elements = current_pivot_row_data.select(2,i).squeeze(1);
+        // Original: torch::Tensor pivot_vals = pivot_rows.index({torch::indexing::Slice(), i}); // INDEXING ERROR 1
+        
+        if (pivot_elements.abs().lt(epsilon).any().item<bool>()) {
+            throw std::runtime_error("Singular matrix encountered.");
+        }
+
+        // Normalize the pivot row. Store in a slice of float_buffer3.
+        torch::Tensor normalized_pivot_row = float_buffer3.slice(1, 0, 1); // (B,1,2N)
+        // Divisor `pivot_elements` is (B,). Needs to be (B,1,1) for broadcasting with (B,1,2N) dividend and quotient.
+        torch::div_out(normalized_pivot_row, current_pivot_row_data, pivot_elements.unsqueeze(1).unsqueeze(2));
+        // Original: torch::div_out(pivot_rows_normalized, pivot_rows, pivot_vals.unsqueeze(-1).expand({B, 1, 2*N})); // INDEXING ERROR 2 (divisor shape)
+        
+        // Scatter the normalized pivot row back into A_aug at its true original index.
+        // Index for scatter: pivot_row_original_indices_B1 (B,1). Needs to be (B,1,2N) to match src shape.
+        A_aug.scatter_(1, pivot_row_original_indices_B1.unsqueeze(2).expand_as(normalized_pivot_row), normalized_pivot_row);
+        // Original: A_aug.scatter_(1, pivot_row_indices, pivot_rows_normalized.unsqueeze(1)); // INDEXING ERROR 3 (src shape for scatter)
+        
+        // === 4. Remove pivot column from all other rows (Gauss-Jordan elimination step) ===
+        // This part was incomplete and had potential buffer aliasing in the original code.
+        
+        // Create a mask for permuted row indices `k` where `k != i`.
+        torch::not_equal_out(mask, all_k.unsqueeze(0).expand_as(mask), i); // mask is (B,N), true where k_perm != i
+        
+        // Get permuted indices `k` that are not `i`.
+        torch::Tensor other_permuted_indices_k = all_k.masked_select(mask[0]); // (N-1) tensor
+
+        if (N - 1 > 0) { // Only proceed if there are other rows to update
+            // Get original row indices for these "other" rows.
+            torch::Tensor other_rows_original_indices = row_perm.index({ // Shape (B, N-1)
+                batch_idx.unsqueeze(1), 
+                other_permuted_indices_k.unsqueeze(0).expand({B, N-1})
+            });
+
+            // Prepare index for gathering/scattering these N-1 rows from/to A_aug.
+            torch::Tensor gather_scatter_idx_for_other_rows = other_rows_original_indices.unsqueeze(-1).expand({B, N-1, 2*N}); // (B, N-1, 2N)
+            
+            // Use a slice of float_buffer1 for rows_to_update.
+            // This slice might overlap with `current_pivot_row_data` if N-1 >= 1.
+            // However, `current_pivot_row_data` (from float_buffer1) was used to compute `normalized_pivot_row` (in float_buffer3).
+            // The crucial data for this step is `normalized_pivot_row`, which is in a different buffer. So, reusing float_buffer1 here is safe.
+            torch::Tensor rows_to_update = float_buffer1.slice(1, 0, N-1); // (B, N-1, 2N)
+            rows_to_update.copy_(A_aug.gather(1, gather_scatter_idx_for_other_rows)); // Fetch current state of these rows.
+
+            // Calculate scaling factors: For each row_to_update, its element in column `i`.
+            torch::Tensor factors = rows_to_update.select(2,i).clone(); // (B, N-1). Clone to be safe if select is a view for in-place ops.
+
+            // Subtract factor * normalized_pivot_row from each row_to_update.
+            // factors.unsqueeze(2) is (B,N-1,1)
+            // normalized_pivot_row is (B,1,2N)
+            // Product by broadcasting: (B,N-1,1) * (B,1,2N) -> (B,N-1,2N)
+            rows_to_update.sub_(factors.unsqueeze(2) * normalized_pivot_row);
+
+            // Scatter updated rows back to A_aug.
+            A_aug.scatter_(1, gather_scatter_idx_for_other_rows, rows_to_update);
+        }
+    } // End of loop over i
+
+    // === 5. Reorder output rows ===
+    // The inverse part of A_aug is now computed, but rows are permuted according to `row_perm`.
+    // We need to apply `row_perm` to get the final order.
+    // `row_perm[b, j] = original_idx` means final row `j` should be `A_aug[b, original_idx, :]`.
+    // This is a bit tricky. `row_perm` stores `original_index = row_perm[batch, final_row_index]`.
+    // We need to create an inverse permutation or use scatter.
+    // A simpler way for final reordering: if row_perm[b, k] = orig_idx, this means original row `orig_idx` is now at permuted row `k`.
+    // So, the row `A_aug[b, orig_idx, :]` should end up in `Output[b, k, :]`.
+    // This implies we need to sort `A_aug` based on `row_perm`.
+    // `final_indices` should map `final_row_pos -> current_row_pos_in_A_aug (which is original_idx)`
+    // This is exactly what `row_perm` provides.
+    // Example: row_perm[b] = [1,0,2] (for N=3). Means:
+    //   - Final row 0 content is from A_aug's original row 1.
+    //   - Final row 1 content is from A_aug's original row 0.
+    //   - Final row 2 content is from A_aug's original row 2.
+    // So, gather A_aug rows using row_perm as indices.
+    torch::Tensor final_indices = row_perm.unsqueeze(-1).expand({B, N, 2*N});
+    torch::Tensor reordered_A_aug = A_aug.gather(1, final_indices);
+    
+    return reordered_A_aug.slice(2, N, 2*N).reshape_as(X_const);
 }
 
 torch::Tensor
-m00nny::orthogonalize(torch::Tensor& X)
+m00nny::orthogonalize(const torch::Tensor& X_const)
 {
     /*
     Make the input tensor orthogonal.
@@ -151,27 +277,55 @@ m00nny::orthogonalize(torch::Tensor& X)
     */
 
     LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::orthogonalize\n")
-    c10::IntArrayRef size = X.sizes();
-    int64_t dim = X.dim();
-    int64_t n   = size[dim - 2];
-    int64_t m   = size[dim - 1];
-    // If the input tensor is not a square matrix, return the input tensor.
+    c10::IntArrayRef size = X_const.sizes();
+    if (X_const.dim() < 2) {
+        throw std::runtime_error("m00nny::orthogonalize: Input tensor must have at least 2 dimensions.");
+    }
+    int64_t n_rows = size[X_const.dim() - 2]; // Dimension of each vector
+    int64_t m_cols = size[X_const.dim() - 1]; // Number of vectors
+
+    if (m_cols == 0) return X_const.clone();
+
     int64_t num_matrix = 1;
-    for (int64_t i = 0; i < dim - 2; i++) num_matrix *= size[i];
+    for (int64_t i = 0; i < X_const.dim() - 2; i++) num_matrix *= size[i];
     
-    torch::Tensor A = X.view({num_matrix, n, m}).clone(); // A : (*, n, m) A is the matrix to otthogonalize.
-    A.div_(A.norm(2, 2, true)); // A : (*, n, m) A is the normalized matrix.
-    torch::Tensor cumsum_A = A.cumsum(1) - A; // cumsum_A : (*, n, m) cumsum_A is the cumulative sum of the matrix.
-    cumsum_A.slice(1, 0, 1, 1) = 1;
-    cumsum_A.div_(cumsum_A.norm(2, 2, true)); // normalized_cumsum_A : (*, n, m) normalized_cumsum_A is the normalized cumulative sum of the matrix.
-    cumsum_A.slice(1, 0, 1, 1) = 0;
-    A.sub_(A.mul(cumsum_A).sum(2, true).mul(cumsum_A)); // A : (*, n, m) A is the orthogonalized matrix.
-    A.div_(A.norm(2, 2, true)); // A : (*, n, m) A is the orthogonalized matrix.
+    torch::Tensor A = X_const.reshape({num_matrix, n_rows, m_cols}).clone(); 
+    const double epsilon = 1e-12;
+
+    // Step 1: Normalize all input columns (vectors) individually. A_j = v_j / ||v_j||
+    torch::Tensor col_norms_A = A.norm(2, /*dim=*/1, /*keepdim=*/true); // Norm along rows_dim for each column vector
+    A.div_(col_norms_A.clamp_min(epsilon)); // A now contains a_1, a_2, ...
+
+    // Step 2: Construct the C matrix. C_j = sum_{k=1}^{j-1} A_k
+    torch::Tensor C = A.cumsum(/*dim=*/2) - A; // cumsum along cols_dim. 
+    
+    // Step 3: Modify and normalize columns of C to get C_prime (columns c'_j)
+    if (m_cols > 0) C.select(/*dim=*/2, /*index=*/0).fill_(1.0); // Set first column of C to all ones.
+
+    torch::Tensor col_norms_C = C.norm(2, /*dim=*/1, /*keepdim=*/true); // Norm along rows_dim
+    C.div_(col_norms_C.clamp_min(epsilon));   // C now contains normalized c_j (let's call them c'_j)
+                                            // c'_1 = normalize(vector_of_ones)
+                                            // c'_2 = normalize(a_1) = a_1
+                                            // c'_j = normalize(sum_{k=1}^{j-1} a_k) (where a_1 in sum was used after c_1=1 step's normalization if not careful)
+                                            // This interaction of c_1=1 affecting normalization of subsequent sums is tricky.
+                                            // It's cleaner if C was formed, then c_1 modified, then all columns normalized independently.
+                                            // The current PyTorch norm will do this independently.
+    // Step 4: Zero out the first column of normalized C
+    if (m_cols > 0) C.select(/*dim=*/2, /*index=*/0).fill_(0.0); // So, effectively c'_1 (for projection) becomes 0.
+    
+    // Step 5: The core subtraction: A_out_j = A_j - <A_j, C'_j> * C'_j
+    // Inner product <A_j, C'_j> means summing (A_ij * C'_ij) over i (rows)
+    torch::Tensor inner_products = (A * C).sum(/*dim=*/1, /*keepdim=*/true); // Shape: (num_matrix, 1, m_cols)
+                                                                             // Element (b, 0, j) is <A_b[:,j], C_b[:,j]>
+    A.sub_(inner_products * C); // This is A_j_new = A_j_old - <A_j_old, C'_j> * C'_j
+    // Step 6: Final normalization of resulting columns
+    torch::Tensor final_col_norms = A.norm(2, /*dim=*/1, /*keepdim=*/true); // Norm along rows_dim
+    A.div_(final_col_norms.clamp_min(epsilon));
     return A.reshape(size);
 }
 
 std::tuple<torch::Tensor, torch::Tensor>
-m00nny::eigen_decomposition(torch::Tensor& X, int64_t lowrank, int64_t max_iters, double threshold)
+m00nny::eigen_decomposition(const torch::Tensor& X, int64_t lowrank, int64_t max_iters, double threshold)
 {
     /*
     Egien Decomposition of the input tensor.
@@ -291,11 +445,11 @@ m00nny::eigen_decomposition(torch::Tensor& X, int64_t lowrank, int64_t max_iters
             dE_dV.view({num_matrix, n * lowrank, n * lowrank}),
             E.view({num_matrix, n * lowrank, 1}));                    // vec_dL1_dV : (*, n*r, 1).
 
-        _buffer_0_nrrn.copy_(dE_dV.permute({0, 1, 2, 4, 3}));         // (*, n, r, r, n)
-        _buffer_1_rnrn.copy_(dE_dV.permute({0, 2, 1, 3, 4}));         // (*, r, n, r, n)
+        _buffer_0_nrnr.copy_(dE_dV.permute({0, 1, 2, 3, 4}));         // (*, n, r, n, r)
+        _buffer_1_nrrn.copy_(dE_dV.permute({0, 3, 4, 2, 1}));         // (*, n, r, r, n)
         torch::matmul_out(ddL1_dVdVt,
-            _buffer_0.view({num_matrix, n * lowrank, n * lowrank}),
-            _buffer_1.view({num_matrix, n * lowrank, n * lowrank}));   // ddL1_dVdVt : (*, n*r, r*n).
+            _buffer_0.view({num_matrix, n * lowrank, lowrank * n}),
+            _buffer_1.view({num_matrix, n * lowrank, lowrank * n}));   // ddL1_dVdVt : (*, n*r, r*n).
         torch::mul_out(_buffer_0_nrrn,
             E.view({num_matrix, n, 1, lowrank, 1}),
             AtU.transpose(1, 2).view({num_matrix, 1, lowrank, 1, n}));                  // E x Ut A (*, n, r, r, n)
@@ -350,11 +504,11 @@ m00nny::eigen_decomposition(torch::Tensor& X, int64_t lowrank, int64_t max_iters
 
         // Update the V based on the gradient.
         _buffer_0_like_Vt.copy_(dL1_dV.transpose(1, 2)); // _buffer_0_like_Vt : (*, r, n).
-        torch::matmul_out(_buffer_1_like_vec_V, inverse(ddL1_dVdVt), _buffer_0_like_vec_V); // _buffer_1 = ggL1_gVgVt^-1 gL1_gV
+        torch::matmul_out(_buffer_1_like_vec_V, m00nny::inverse(ddL1_dVdVt), _buffer_0_like_vec_V); // _buffer_1 = ggL1_gVgVt^-1 gL1_gV
         V.sub_(_buffer_1_like_V); // V = V - _buffer_1
 
         _buffer_0_like_Vt.copy_(dL2_dV.transpose(1, 2)); // _buffer_0_like_Vt : (*, r, n).
-        torch::matmul_out(_buffer_1_like_vec_V, inverse(ddL2_dVdVt), _buffer_0_like_vec_V); // _buffer_2 = ggL2_gVgVt^-1 gL2_gV
+        torch::matmul_out(_buffer_1_like_vec_V, m00nny::inverse(ddL2_dVdVt), _buffer_0_like_vec_V); // _buffer_2 = ggL2_gVgVt^-1 gL2_gV
         V.sub_(_buffer_1_like_V); // V = V - _buffer_1
     }
     V = V.reshape(size);
@@ -362,121 +516,150 @@ m00nny::eigen_decomposition(torch::Tensor& X, int64_t lowrank, int64_t max_iters
 }
 
 std::tuple<torch::Tensor, torch::Tensor>
-m00nny::eigen_decomposition_new(torch::Tensor& X, int64_t lowrank, int64_t max_iters, double threshold)
+m00nny::eigen_decomposition_new(const torch::Tensor& X_const, int64_t lowrank, int64_t max_iters, double threshold, double damping_factor)
 {
     LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::eigen_decomposition\n")
-    torch::NoGradGuard no_grad;
-    // X: (*, n, m) where n = m (Square Matrix)
-    c10::IntArrayRef size = X.sizes();
-    int64_t dim = X.dim();
-    int64_t n   = size[dim - 2];
-    int64_t m   = size[dim - 1];
-    int64_t num_matrix = 1;
-    for (int64_t i = 0; i < dim - 2; i++) num_matrix *= size[i];
+     torch::NoGradGuard no_grad;
+    internal::check_square(X_const, "m00nny::eigen_decomposition_newton_impl");
+    // NOTE: We assume X_const is symmetric.
 
-    // If the input tensor is not a square matrix, return the input tensor.
-    lowrank = (lowrank < 0) || (lowrank > n) ? n : lowrank;
-    
-    // Initialize the eigenvector matrix.
-    // torch::Tensor A  = X.clone(); // A : (*, n, n) where n = m. A is the matrix to calculate the eigenvectors.
-    torch::Tensor A  = X.view({num_matrix, n, m}).clone(); // A         : (*, n, m) where n = m. A is the matrix to calculate the eigenvectors.
-    torch::Tensor At = A.transpose(1, 2).clone();          // At        : (*, m, n) where n = m. At is the transposed matrix to calculate the eigenvectors.
-    torch::Tensor A_lowrank = A.slice(1, 0, lowrank, 1);   // A_lowrank : (*, r, m) where n = m. A_lowrank is the lowrank matrix to calculate the eigenvectors.
+    int64_t num_matrix = X_const.numel() / (X_const.size(-2) * X_const.size(-1));
+    int64_t n = X_const.size(-2);
+    int64_t r = (lowrank <= 0 || lowrank > n) ? n : lowrank;
 
-    torch::Tensor Vt = torch::randn_like(A_lowrank);  // Vt : (*, r, n) V is the eigenvector matrix.
-    torch::Tensor V  = Vt.transpose(1, 2).clone();    // V  : (*, n, r) V is the eigenvector matrix.
-    torch::Tensor Λ  = torch::zeros({num_matrix, n, n},
-                                        X.options()); // Λ  : (*, n, n). Λ is the eigenvalue vector.
-    torch::Tensor Λr = Λ
-        .slice(1, 0, lowrank, 1)
-        .slice(2, 0, lowrank, 1);                     // Λr : (*, r). Λr is the eigenvalue vector, sharing the same memory with Λ.
-
-    torch::Tensor vec_Λ  = torch::diagonal(Λ,  0, 1, 2); // vec_Λ  : (*, n). vec_Λ is the eigenvalue vector.
-    torch::Tensor vec_Λr = torch::diagonal(Λr, 0, 1, 2); // vec_Λr : (*, r). vec_Λr is the eigenvalue vector, sharing the same memory with vec_Λ.
-
-    torch::Tensor AV  = torch::empty_like(V);  // AV  : (*, n, r). AV is the matrix-vector multiplication.
-    torch::Tensor VΛ  = torch::empty_like(V);  // VΛ  : (*, n, r). ΛV is the matrix-vector multiplication.
-    torch::Tensor E   = torch::empty_like(V);  // E   : (*, n, r). E is the error matrix.
-    torch::Tensor Et  = torch::empty_like(Vt); // Et  : (*, r, n). Et is the transposed error matrix.
-    torch::Tensor VVt = torch::empty_like(A);  // VVt : (*, n, n). VVt is the inner product of the eigenvector matrix.
-    torch::Tensor VtV = torch::empty({num_matrix, lowrank, lowrank}, X.options()); // VtV : (*, r, r). VtV is the inner product of the eigenvector matrix.
-
-    torch::Tensor I = torch::eye(n, m, X.options());             // I : (n, n). I is the identity matrix.
-    for (int64_t d = 0; d < (dim == 2 ? 1 : dim - 2); d++) I.unsqueeze_(0); // I : (*, n, n). I is the identity matrix.
-    torch::Tensor Ir = I.slice(1, 0, lowrank, 1).slice(2, 0, lowrank, 1); // Ir : (*, r, r). Ir is the identity matrix, sharing the same memory with I.
-
-    torch::Tensor gL1_gV = torch::empty_like(V);     // gL1_gV : (*, n, r). gL1_gV is the gradient of the eigenvalue vector and the eigenvector matrix.
-    torch::Tensor gL2_gV = torch::empty_like(V);     // gL2_gV : (*, n, r). gL2_gV is the gradient of the eigenvalue vector and the eigenvector matrix.
-    torch::Tensor ggL1_gVgVt = torch::empty_like(A); // ggL1_gVgVt : (*, n, n). ggL1_gVgVt is the second derivative of the eigenvalue vector and the eigenvector matrix and the eigenvector matrix transpose.
-    torch::Tensor ggL2_gVgVt = torch::empty_like(A); // ggL2_gVgVt : (*, n, n). ggL2_gVgVt is the second derivative of the eigenvalue vector and the eigenvector matrix and the eigenvector matrix transpose.
-
-    torch::Tensor _buffer_1 = torch::empty_like(A); // temporary buffer for calculation.
-    torch::Tensor _buffer_2 = torch::empty_like(A); // temporary buffer for calculation.
-    torch::Tensor _buffer_3 = torch::empty_like(A); // temporary buffer for calculation.
-    
-    torch::Tensor _buffer_1_like_V = _buffer_1.view({-1}).slice(0, 0, num_matrix * n * lowrank).view({num_matrix, n, lowrank}); // temporary buffer for calculation.
-    torch::Tensor _buffer_2_like_V = _buffer_2.view({-1}).slice(0, 0, num_matrix * n * lowrank).view({num_matrix, n, lowrank}); // temporary buffer for calculation.
-    torch::Tensor _buffer_3_like_V = _buffer_3.view({-1}).slice(0, 0, num_matrix * n * lowrank).view({num_matrix, n, lowrank}); // temporary buffer for calculation.
-
-    torch::Tensor _buffer_1_like_R = _buffer_1.view({-1}).slice(0, 0, num_matrix * lowrank * lowrank).view({num_matrix, lowrank, lowrank}); // temporary buffer for calculation.
-    torch::Tensor _buffer_2_like_R = _buffer_2.view({-1}).slice(0, 0, num_matrix * lowrank * lowrank).view({num_matrix, lowrank, lowrank}); // temporary buffer for calculation.
-    torch::Tensor _buffer_3_like_R = _buffer_3.view({-1}).slice(0, 0, num_matrix * lowrank * lowrank).view({num_matrix, lowrank, lowrank}); // temporary buffer for calculation.
-
-    for (int64_t j = 0; j < max_iters; j++)
-    {
-        V.div_(V.norm(2, 1, true)); // Normalize the eigenvector matrix.
-        torch::transpose_copy_out(Vt, V, 1, 2); // Vt : (*, r, n). Vt is the transposed eigenvector matrix.
-
-        torch::bmm_out(AV, A, Vt.transpose(1, 2)); // AV : (*, n, r). AV is the matrix-vector multiplication.
-        torch::norm_out(vec_Λr, AV, 2, 1);            // Λr : (*, r). Λ is the Eigenvalue vector.
-        // torch::mul_out(ΛV, V, vec_Λr.unsqueeze(1));   // ΛV : (*, n, r). ΛV is the Eigenvalue Vector multiplication.
-        torch::bmm_out(VΛ, V, Λr);   // ΛV : (*, n, r). ΛV is the Eigenvalue Vector multiplication.
-        torch::sub_out(E, AV, VΛ);                    // E  : (*, n, m). E is the error matrix.
-        torch::transpose_copy_out(Et, E, 1, 2);       // Et : (*, m, n). Et is the transposed error matrix.
-        if (E.abs().max().item<float>() < threshold) break; // If the error is less than the threshold, break the loop.
-
-        // Get the gradient of Loss_1, Squared Sum Error.
-        torch::sub_out(_buffer_1, At, Λ); // (A - Λ)^T = (A^T - Λ)
-        torch::bmm_out(_buffer_3_like_V, _buffer_1, Et.transpose(1, 2)); // (A - Λ)^T E
-        torch::mul_out(_buffer_2_like_V, E, vec_Λr.unsqueeze(1)); //  E Λ
-        torch::sub_out(gL1_gV, _buffer_3_like_V, _buffer_2_like_V).mul_(2); // gL1_gV = 2 [(A - Λ)^T E - E Λ]
-
-        // torch::mul_out(_buffer_2, _buffer_1, vec_Λ.unsqueeze(2)).mul_(-2); // -2 Λ (A - Λ)^T
-        // torch::bmm_out(_buffer_2, Λ, _buffer_1).mul_(-2); // -2 Λ (A - Λ)^T
-        torch::bmm_out(_buffer_2, _buffer_1, Λ.transpose(1, 2)).mul_(-2); // -2 (A - Λ) Λ
-        // torch::sub_out(_buffer_3, _buffer_1, Λ).mul_(-1); // (A^T - 2Λ) = (A - 2Λ)^T
-        torch::sub_out(_buffer_3, _buffer_1, Λ).mul_(-1); // (2Λ - A^T) = (2Λ - A)^T
-        torch::bmm_out(_buffer_1, _buffer_3, _buffer_3.transpose(1, 2)); // (A - 2Λ)^T (A - 2Λ)
-        torch::add_out(ggL1_gVgVt, _buffer_1, _buffer_2).mul_(2); // ggL1_gVgVt 2 [(A - 2Λ)^T (A - 2Λ) - 2 (A - Λ) Λ]
-
-        // Get the gradient of the inner product of the eigenvector matrix. (Cosine Similarity)
-        torch::bmm_out(_buffer_1_like_R, Vt, Vt.transpose(1, 2)); // VtV : (*, r, r) where n = m. VtV is the inner product of the eigenvector matrix.
-        _buffer_1_like_R.sub_(Ir); // VtV - Ir
-        torch::bmm_out(gL2_gV, V, _buffer_1_like_R.transpose(1, 2)); // gL2_gV = V (VtV - Ir) : (*, n, r)
-        gL2_gV.mul_(4);
-
-        torch::bmm_out(ggL2_gVgVt, V, Vt);
-        ggL2_gVgVt.mul_(3);
-        ggL2_gVgVt.sub_(I);
-        ggL2_gVgVt.mul_(4); // ggL2_gVgVt = 12 V Vt - 4 I : (*, n, n)
-
-        // Update the V based on the gradient.
-        torch::matmul_out(_buffer_1_like_V, inverse(ggL1_gVgVt), gL1_gV); // _buffer_1 = ggL1_gVgVt^-1 gL1_gV
-        torch::matmul_out(_buffer_2_like_V, inverse(ggL2_gVgVt), gL2_gV); // _buffer_2 = ggL2_gVgVt^-1 gL2_gV
-
-        // torch::matmul_out(_buffer_1_like_V, torch::inverse(ggL1_gVgVt), gL1_gV); // _buffer_1 = ggL1_gVgVt^-1 gL1_gV
-        // torch::matmul_out(_buffer_2_like_V, torch::inverse(ggL2_gVgVt), gL2_gV); // _buffer_2 = ggL2_gVgVt^-1 gL2_gV
-
-        V.sub_(_buffer_1_like_V).sub_(_buffer_2_like_V); // V = V - 0.5 (_buffer_1 + _buffer_2)
+    if (r == 0) {
+        return std::make_tuple(torch::empty({num_matrix, 0, 0}, X_const.options()),
+                               torch::empty({num_matrix, n, 0}, X_const.options()));
     }
-    Λ = Λr.clone();
-    V = V.reshape(size);
-    return std::make_tuple(Λ, V);
+
+    torch::Tensor A = X_const.reshape({num_matrix, n, n});
+    torch::Tensor V = torch::randn({num_matrix, n, r}, A.options());
+    if (V.numel() > 0) V = m00nny::orthogonalize(V);
+
+    torch::Tensor Vt, AV, Lambda_diag_r_mat, E_residual; // Renamed E to E_residual
+    torch::Tensor Ir = torch::eye(r, r, A.options()).unsqueeze(0).expand({num_matrix, r, r});
+    torch::Tensor In = torch::eye(n, n, A.options()).unsqueeze(0).expand({num_matrix, n, n}); // For n x n Identity
+    const double epsilon_solve = 1e-9; // Tolerance for solve/inverse
+
+    LIBM00NNY_DEBUG_MESSAGE("Starting Newton iterations for eigen_decomposition...\n");
+    for (int64_t iter = 0; iter < max_iters; ++iter) {
+        if (V.numel() == 0) break;
+
+        if (iter > 0) { V = m00nny::orthogonalize(V); }
+        Vt = V.transpose(1, 2).contiguous(); // (*, r, n)
+
+        AV = torch::bmm(A, V); // (*, n, r)
+        torch::Tensor vec_lambda = torch::einsum("bnr,bnr->br", {V, AV}); // (*, r) eigenvalues
+        Lambda_diag_r_mat = torch::diag_embed(vec_lambda); // (*, r, r) diagonal matrix
+        
+        E_residual = AV - torch::bmm(V, Lambda_diag_r_mat); // (*, n, r)
+
+        double fro_norm_E_sq = E_residual.pow(2).sum().item<double>(); // Sum of squares of all elements
+        double avg_elem_E_sq = fro_norm_E_sq / std::max(1.0, static_cast<double>(E_residual.numel()));
+        LIBM00NNY_DEBUG_MESSAGE("Iter " + std::to_string(iter) + ", Avg Elem |AV - VL|^2: " + std::to_string(avg_elem_E_sq) + "\n");
+        if (std::sqrt(avg_elem_E_sq) < threshold) { LIBM00NNY_DEBUG_MESSAGE("Converged on residual.\n"); break; }
+
+        // ========================================================================
+        // CRITICAL SECTION: Implementing YOUR derived Newton update formulas
+        // Using the structure from your original C++ code's variable names
+        // ggL1_gVgVt -> H1_approx (n x n)
+        // ggL2_gVgVt -> H2_approx (n x n)
+        // gL1_gV -> grad_L_eig (n x r)
+        // gL2_gV -> grad_L_ortho (n x r)
+        // ========================================================================
+        torch::Tensor grad_L_eig_update_step;
+        torch::Tensor grad_L_ortho_update_step;
+
+        // --- Loss 1: Eigenvalue Residual Component ---
+        // Original gL1_gV = 2 * [(A - Λ_nn)^T E_residual - E_residual Λ_rr]
+        // Where Λ_nn was VΛV^T and Λ_rr was Λ
+        torch::Tensor VLambdaVt = torch::bmm(torch::bmm(V, Lambda_diag_r_mat), Vt); // (*, n, n)
+        torch::Tensor A_minus_VLambdaVt = A - VLambdaVt; // (*, n, n)
+
+        torch::Tensor term1_eig = torch::bmm(A_minus_VLambdaVt.transpose(1,2), E_residual); // (*, n, r)
+        torch::Tensor term2_eig = torch::bmm(E_residual, Lambda_diag_r_mat); // (*, n, r)
+        torch::Tensor gL1_gV = 2 * (term1_eig - term2_eig); // (*, n, r)
+
+        // Original ggL1_gVgVt = 2 * [(A - 2VΛV^T)^T (A - 2VΛV^T) - 2 * (A - VΛV^T)VΛV^T]
+        torch::Tensor A_minus_2VLambdaVt = A - 2 * VLambdaVt;
+        torch::Tensor H1_term1 = torch::bmm(A_minus_2VLambdaVt.transpose(1,2), A_minus_2VLambdaVt); // (*, n, n)
+        torch::Tensor H1_term2 = torch::bmm(A_minus_VLambdaVt, VLambdaVt); // (*, n, n)
+        torch::Tensor H1_approx = 2 * (H1_term1 - 2 * H1_term2); // (*, n, n)
+
+        try {
+            // Add regularization to Hessian for stability if needed
+            // H1_approx = H1_approx + torch::eye(n, A.options()).unsqueeze(0) * 1e-6;
+            grad_L_eig_update_step = torch::linalg::solve(H1_approx, gL1_gV, true);
+        } catch (const c10::Error& e) {
+            LIBM00NNY_DEBUG_MESSAGE("Newton Eigen Step: linalg::solve for eig failed. Using gradient. Error: " + std::string(e.what()) + "\n");
+            grad_L_eig_update_step = gL1_gV; // Fallback to gradient
+        }
+
+
+        // --- Loss 2: Orthogonality Component ---
+        torch::Tensor O_mat = torch::bmm(Vt, V) - Ir; // (*, r, r)
+        torch::Tensor gL2_gV = 4 * torch::bmm(V, O_mat);      // (*, n, r)
+
+        // Original ggL2_gVgVt = 12 V V^T - 4 I_n
+        torch::Tensor H2_approx = 12 * torch::bmm(V, Vt) - 4 * In; // (*, n, n)
+
+        try {
+            // Add regularization
+            // H2_approx = H2_approx + torch::eye(n, A.options()).unsqueeze(0) * 1e-6;
+            grad_L_ortho_update_step = torch::linalg::solve(H2_approx, gL2_gV, true);
+        } catch (const c10::Error& e) {
+            LIBM00NNY_DEBUG_MESSAGE("Newton Eigen Step: linalg::solve for ortho failed. Using gradient. Error: " + std::string(e.what()) + "\n");
+            grad_L_ortho_update_step = gL2_gV; // Fallback to gradient
+        }
+
+        // --- Combine updates ---
+        // These step_sizes scale the Newton steps dV = H_inv * g.
+        // For true Newton, step_sizes should be 1.0. Use damping_factor for control.
+        // If using fallback gradients, these are learning rates and should be small.
+        bool eig_solve_failed = grad_L_eig_update_step.equal(gL1_gV); // Check if fallback was used
+        bool ortho_solve_failed = grad_L_ortho_update_step.equal(gL2_gV);
+
+        double actual_eig_step_scale = eig_solve_failed ? 0.0001 : 1.0; // Smaller if gradient descent
+        double actual_ortho_step_scale = ortho_solve_failed ? 0.001 : 1.0;
+
+
+        torch::Tensor dV = (actual_eig_step_scale * grad_L_eig_update_step +
+                            actual_ortho_step_scale * grad_L_ortho_update_step);
+        V.sub_(damping_factor * dV);
+        // ========================================================================
+        // End of CRITICAL Newton update section
+        // ========================================================================
+
+        if (iter == max_iters - 1) { LIBM00NNY_DEBUG_MESSAGE("Max iterations reached.\n"); }
+    }
+
+    if (V.numel() > 0) V = m00nny::orthogonalize(V);
+    Vt = V.transpose(1, 2).contiguous();
+    AV = torch::bmm(A, V);
+    torch::Tensor final_eigenvalues_vec = torch::einsum("bnr,bnr->br", {V, AV});
+
+    auto [sorted_Lambda_vals, sort_indices] = final_eigenvalues_vec.sort(/*dim=*/-1, /*descending=*/true);
+    final_eigenvalues_vec = sorted_Lambda_vals;
+    
+    torch::Tensor V_output = V;
+    if (V.numel() > 0 && sort_indices.numel() > 0 && r > 0) {
+        torch::Tensor expanded_sort_indices = sort_indices.unsqueeze(1).expand({num_matrix, n, r});
+        V_output = V.gather(/*dim=*/2, expanded_sort_indices);
+    }
+    
+    c10::IntArrayRef original_X_sizes = X_const.sizes();
+    std::vector<int64_t> V_output_shape_vec;
+    for(size_t i=0; i < original_X_sizes.size() - 2; ++i) V_output_shape_vec.push_back(original_X_sizes[i]);
+    V_output_shape_vec.push_back(n); 
+    V_output_shape_vec.push_back(r); 
+    
+    return std::make_tuple(torch::diag_embed(final_eigenvalues_vec), V_output.reshape(V_output_shape_vec));
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-m00nny::singular_value_decomposition(torch::Tensor& X, int64_t lowrank, int64_t max_iters, double threshold)
+m00nny::singular_value_decomposition(const torch::Tensor& X, int64_t lowrank, int64_t max_iters, double threshold, double damping_factor)
 {
+    LIBM00NNY_DEBUG_MESSAGE("C++: m00nny::singular_value_decomposition\n")
     torch::NoGradGuard no_grad;
     // X: (*, n, m) where n >= m 
     int64_t dim = X.dim();
@@ -493,33 +676,7 @@ m00nny::singular_value_decomposition(torch::Tensor& X, int64_t lowrank, int64_t 
     auto [Σ, V] = eigen_decomposition(ATA, lowrank_1, max_iters, threshold); // V : (*, m, m). V is the right singular vector matrix.
 
     // SVD is the same as the eigen decomposition.
-    return m > n ? std::make_tuple(U, Λ, V) : std::make_tuple(U, Σ, V);
-}
-
-PyObject*
-linalg_kronecker_product
-(PyObject *self, PyObject *args, PyObject *kwds)
-{
-    const char* keywords[] = {"X", "Y", NULL};
-    PyObject *pyX, *pyY;
-    torch::Tensor X, Y;
-    
-    InitGILScope
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", (char**)keywords, &pyX, &pyY)) return NULL;
-    Py_XINCREF(pyX);
-    Py_XINCREF(pyY);
-    X = THPVariable_Unpack(pyX);
-    Y = THPVariable_Unpack(pyY);
-    ExitGILScope
-
-    torch::Tensor _kronecker_product = m00nny::kronecker_product(X, Y);
-    PyObject* py_kronecker_product;
-    InitGILScope
-    py_kronecker_product = THPVariable_Wrap(_kronecker_product);
-    Py_XDECREF(pyX);
-    Py_XDECREF(pyY);
-    ExitGILScope
-    return py_kronecker_product;
+    return m > n ? std::make_tuple(U, Σ, V) : std::make_tuple(U, Λ, V);
 }
 
 PyObject*
@@ -575,7 +732,7 @@ PyObject* linalg_eigen_decomposition (PyObject *self, PyObject *args, PyObject *
     torch::Tensor X;
     int64_t lowrank = -1;
     int64_t max_iters = 1000;
-    double threshold = 1e-8;
+    double threshold = 1e-6;
     
     InitGILScope
     int64_t _stack = 0;
@@ -583,7 +740,7 @@ PyObject* linalg_eigen_decomposition (PyObject *self, PyObject *args, PyObject *
     IfSaveState(_stack, (pyX == nullptr) || Py_IsNone(pyX), [](){ PyErr_SetString(PyExc_TypeError, "X is required."); })
     IfSaveState(_stack, (Pyrank == nullptr) || Py_IsNone(Pyrank), [&Pyrank](){ Pyrank = PyLong_FromLong(-1); })
     IfSaveState(_stack, (Pymax_iters == nullptr) || Py_IsNone(Pymax_iters), [&Pymax_iters](){ Pymax_iters = PyLong_FromLong(1000); })
-    IfSaveState(_stack, (Pythreshold == nullptr) || Py_IsNone(Pythreshold), [&Pythreshold](){ Pythreshold = PyFloat_FromDouble(1e-8); })
+    IfSaveState(_stack, (Pythreshold == nullptr) || Py_IsNone(Pythreshold), [&Pythreshold](){ Pythreshold = PyFloat_FromDouble(1e-6); })
     Py_XINCREF(pyX);
     X = THPVariable_Unpack(pyX);
     IfRestoreState(_stack, [&Pythreshold](){ Py_XDECREF(Pythreshold); })
@@ -601,7 +758,6 @@ PyObject* linalg_eigen_decomposition (PyObject *self, PyObject *args, PyObject *
     return PyTuple_Pack(2, pyΛ, pyV);
 }
 
-
 PyObject* linalg_eigen_decomposition_new (PyObject *self, PyObject *args, PyObject *kwds)
 {
     const char* keywords[] = {"X", "lowrank", "max_iters", "threshold", NULL};
@@ -609,7 +765,7 @@ PyObject* linalg_eigen_decomposition_new (PyObject *self, PyObject *args, PyObje
     torch::Tensor X;
     int64_t lowrank = -1;
     int64_t max_iters = 1000;
-    double threshold = 1e-8;
+    double threshold = 1e-6;
     
     InitGILScope
     int64_t _stack = 0;
@@ -617,7 +773,7 @@ PyObject* linalg_eigen_decomposition_new (PyObject *self, PyObject *args, PyObje
     IfSaveState(_stack, (pyX == nullptr) || Py_IsNone(pyX), [](){ PyErr_SetString(PyExc_TypeError, "X is required."); })
     IfSaveState(_stack, (Pyrank == nullptr) || Py_IsNone(Pyrank), [&Pyrank](){ Pyrank = PyLong_FromLong(-1); })
     IfSaveState(_stack, (Pymax_iters == nullptr) || Py_IsNone(Pymax_iters), [&Pymax_iters](){ Pymax_iters = PyLong_FromLong(1000); })
-    IfSaveState(_stack, (Pythreshold == nullptr) || Py_IsNone(Pythreshold), [&Pythreshold](){ Pythreshold = PyFloat_FromDouble(1e-8); })
+    IfSaveState(_stack, (Pythreshold == nullptr) || Py_IsNone(Pythreshold), [&Pythreshold](){ Pythreshold = PyFloat_FromDouble(1e-6); })
     Py_XINCREF(pyX);
     X = THPVariable_Unpack(pyX);
     IfRestoreState(_stack, [&Pythreshold](){ Py_XDECREF(Pythreshold); })
@@ -643,7 +799,7 @@ PyObject* linalg_singular_value_decomposition (PyObject *self, PyObject *args, P
     torch::Tensor X;
     int64_t lowrank = -1;
     int64_t max_iters = 1000;
-    double threshold = 1e-8;
+    double threshold = 1e-6;
 
     InitGILScope
     int64_t _stack = 0;
@@ -651,7 +807,7 @@ PyObject* linalg_singular_value_decomposition (PyObject *self, PyObject *args, P
     IfSaveState(_stack, (pyX == nullptr) || Py_IsNone(pyX), [](){ PyErr_SetString(PyExc_TypeError, "X is required."); })
     IfSaveState(_stack, (Pyrank == nullptr) || Py_IsNone(Pyrank), [&Pyrank](){ Pyrank = PyLong_FromLong(-1); })
     IfSaveState(_stack, (Pymax_iters == nullptr) || Py_IsNone(Pymax_iters), [&Pymax_iters](){ Pymax_iters = PyLong_FromLong(1000); })
-    IfSaveState(_stack, (Pythreshold == nullptr) || Py_IsNone(Pythreshold), [&Pythreshold](){ Pythreshold = PyFloat_FromDouble(1e-8); })
+    IfSaveState(_stack, (Pythreshold == nullptr) || Py_IsNone(Pythreshold), [&Pythreshold](){ Pythreshold = PyFloat_FromDouble(1e-6); })
     Py_XINCREF(pyX);
     X = THPVariable_Unpack(pyX);
     IfRestoreState(_stack, [&Pythreshold](){ Py_XDECREF(Pythreshold); })

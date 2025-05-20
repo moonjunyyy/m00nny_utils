@@ -5,18 +5,18 @@ from typing import Callable
 from ..system.path_tree import PathTree
 from ..util.version import Version
 from ..util.download_url import DownloadURL
-from ..util.integrity_verify import get_file_hash
+from ..util.signdir import get_file_hash
 
 from ..system.log import Log
 log = Log(name="install_requirements")
 
-def install_cuda_libs(lib_name  : str,
-                      os_name   : str,
-                      os_arch   : str,
-                      root_dir  : str,
-                      version   : Version,
-                      cuda_version: Version,
-                      condition : Callable=lambda kv: True)-> str:
+def install_cuda_libs(lib_name      : str,
+                      os_name       : str,
+                      os_arch       : str,
+                      root_dir      : str,
+                      version       : Version,
+                      cuda_version  : Version,
+                      condition     : Callable = lambda kv : True)-> str:
 
         # Check for the prior installation (root_dir/{lib_name}*)
         _prior_installation = [Version(f.split(f"{lib_name}-")[-1]) for f in os.listdir(root_dir) if f.startswith(f"{lib_name}-")]
@@ -101,7 +101,7 @@ def install_cuda_libs(lib_name  : str,
 def install_nvtx(root_dir : str) -> str:
     import re
     _nvtx_list_url = "https://github.com/NVIDIA/NVTX/tags"
-    pattern = re.compile(r"<a href=\"/NVIDIA/NVTX/releases/tag/v(\d+\.\d+\.\d+)\"")
+    pattern = re.compile(r'<a href="/NVIDIA/NVTX/releases/tag/v(\d+\.\d+\.\d+)"[^>]*>v(\d+\.\d+\.\d+)</a>')
     try:
         import requests
         _nvtx_list    = requests.get(url=_nvtx_list_url).text
@@ -116,10 +116,7 @@ def install_nvtx(root_dir : str) -> str:
             if not os.path.isdir(s=_nvtx_base_path): os.makedirs(name=_nvtx_base_path)
             # Download the NVTX
             if not os.path.isfile(path=os.path.join(root_dir, "v3.1.0.tar.gz")):
-                import requests
-                log.info(f"No NVTX found. trying to download the NVTX.")
-                with open(file=os.path.join(_nvtx_base_path, "v3.1.0.tar.gz"), mode="wb") as f:
-                    f.write(requests.get(url=_nvtx_url).content)
+                DownloadURL(url=_nvtx_url, save_path=os.path.join(_nvtx_base_path, "v3.1.0.tar.gz")).download()
                 os.system(command=f"tar -xf {_nvtx_base_path}/v3.1.0.tar.gz -C {_nvtx_base_path}")
                 os.remove(path=os.path.join(_nvtx_base_path, "v3.1.0.tar.gz"))
                 os.rename(src=os.path.join(_nvtx_base_path, "NVTX-3.1.0"), dst=os.path.join(_nvtx_base_path, "NVTX"))
@@ -144,8 +141,8 @@ def install_libtorch(os_name   : str,
     _libtorch_base_path = f"{root_dir}/libtorch_{version}_cu{cuda_version.major}{cuda_version.minor}"
     if not os.path.isdir(s=_libtorch_base_path): os.makedirs(name=_libtorch_base_path)
     try:
-        res = requests.get(url=_libtorch_list_url)
         _libtorch_list_url = f"https://download.pytorch.org/libtorch/cu{cuda_version.major}{cuda_version.minor}/"
+        res = requests.get(url=_libtorch_list_url)
         if res.status_code != 200: raise ConnectionError(f"Failed to connect to the server: {_libtorch_list_url}")
         available_versions = []
         for line in res.text.split(sep="\n"):
@@ -163,17 +160,13 @@ def install_libtorch(os_name   : str,
         _libtorch_url = f"https://download.pytorch.org/{_libtorch_file_name.replace('+', '%2B')}"
         _libtorch_file_name = _libtorch_file_name.split(sep="/")[-1]
         DownloadURL(url=_libtorch_url, save_path=os.path.join(_libtorch_base_path, _libtorch_file_name)).download()
-        # Unzip the libtorch file
         os.system(command=f"unzip -q {os.path.join(_libtorch_base_path, _libtorch_file_name)} -d {_libtorch_base_path}")
-        # Remove the libtorch zip file
         os.remove(path=os.path.join(_libtorch_base_path, _libtorch_file_name))
         if not os.path.isdir(s=os.path.join(_libtorch_base_path, "libtorch")):
             raise FileNotFoundError(f"Libtorch path not found: {_libtorch_base_path}/libtorch.\n"
                                     f"You may need to download the libtorch manually proper version from the link: {_libtorch_url}")
-        # Move the libtorch files to the base environment path
         for _item in os.listdir(path=os.path.join(_libtorch_base_path, "libtorch")):
             os.rename(src=os.path.join(_libtorch_base_path, "libtorch", _item), dst=os.path.join(_libtorch_base_path, _item))
-        # Remove the libtorch directory
         shutil.rmtree(path=os.path.join(_libtorch_base_path, "libtorch"))
     except Exception as e:
         shutil.rmtree(path=_libtorch_base_path)
