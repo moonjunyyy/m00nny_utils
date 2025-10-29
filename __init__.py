@@ -21,17 +21,17 @@ def __bootstrap__() -> None:
     from .install.install_requirements import install_cuda_libs, install_libtorch
 
     __lock = mp.Lock()
-    FORCE_BUILD: int    = int(os.environ.get("LIBM00NNY_FORCE_REBUILD",  "0"))
-    ROOT_DIR: str       = os.path.dirname(p=os.path.dirname(p=sys.executable))
-    CURRENT_DIR: str    = os.path.dirname(p=__file__)
+    FORCE_BUILD: int        = int(os.environ.get("LIBM00NNY_FORCE_REBUILD",  "0"))
+    ROOT_DIR: str           = os.path.expanduser(os.path.abspath(os.environ.get("LIBM00NNY_ROOT_DIR",os.path.join(os.path.expanduser("~/.local/")))))
+    CURRENT_DIR: str        = os.path.dirname(p=__file__)
     
     _os_info = os.uname()    
-    OS: str             = _os_info.sysname.lower()
-    OS_VERSION: str     = _os_info.release
-    OS_ARCH: str        = _os_info.machine.lower()
+    OS: str                 = _os_info.sysname.lower()
+    OS_VERSION: str         = _os_info.release
+    OS_ARCH: str            = _os_info.machine.lower()
     
-    _torch_version      = torch.__version__
-    _cuda_version       = torch.version.cuda
+    _torch_version          = torch.__version__.split('+')[0]  # 1.13.1
+    _cuda_version           = torch.version.cuda
     _torch_cudnn_version    = torch.backends.cudnn.version() # 90100
     USE_CXX11_ABI: bool     = torch._C._GLIBCXX_USE_CXX11_ABI # True or False
     
@@ -45,17 +45,24 @@ def __bootstrap__() -> None:
     USE_CUDSS: int      = int(os.environ.get("LIBM00NNY_USE_CUDSS",      "1"))
     USE_CUSPARSELT: int = int(os.environ.get("LIBM00NNY_USE_CUSPARSELT", "1"))
     USE_NCCL: int       = int(os.environ.get("LIBM00NNY_USE_NCCL",       "1"))
-
     DEBUG: int          = int(os.environ.get("LIBM00NNY_DEBUG",          "0"))
 
     # Check the GCC, G++, CMake
-    assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "gcc")), "GCC path not found."
-    assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "g++")), "G++ path not found."
-    assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "cmake")), "CMake path not found."
+    ret_code = os.system("which gcc > /dev/null 2>&1")
+    log.debug(f"which gcc returned code: {ret_code}")
+    assert ret_code == 0, "GCC is not installed. Please install GCC and set the PATH environment variable."
+    ret_code = os.system("which g++ > /dev/null 2>&1")
+    log.debug(f"which g++ returned code: {ret_code}")
+    assert ret_code == 0, "G++ is not installed. Please install G++ and set the PATH environment variable."
+    ret_code = os.system("which cmake > /dev/null 2>&1")
+    log.debug(f"which cmake returned code: {ret_code}")
+    assert ret_code == 0, "CMake is not installed. Please install CMake and set the PATH environment variable."
+    # assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "gcc")), "GCC path not found."
+    # assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "g++")), "G++ path not found."
+    # assert os.path.isfile(path=os.path.join(ROOT_DIR, "bin", "cmake")), "CMake path not found."
 
     with __lock:
         _cmake_paths = []
-        
         # Check the CUDA Toolkit
         CUDA_PATH = install_cuda_libs(lib_name="cuda", os_name=OS, os_arch=OS_ARCH, root_dir=ROOT_DIR, version=CUDA_VERSION, cuda_version=CUDA_VERSION, condition=lambda kv: kv[1]['license'] == "CUDA Toolkit")
         assert os.path.isfile(path=os.path.join(CUDA_PATH, "bin", "nvcc")), "Nvcc path not found. Check the CUDA Toolkit installation."
@@ -111,9 +118,11 @@ def __bootstrap__() -> None:
                 
             if not (\
                 validate_signed_dir(directory_path=os.path.join(CURRENT_DIR, "src"),     
-                                     hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.src.sha256')) and\
+                                    hash_file_path=os.path.join(CURRENT_DIR, 'debug'\
+                                              if DEBUG else 'release', '.src.sha256')) and\
                 validate_signed_dir(directory_path=os.path.join(CURRENT_DIR, "include"), 
-                                     hash_file_path=os.path.join(CURRENT_DIR, 'debug' if DEBUG else 'release', '.include.sha256'))):
+                                     hash_file_path=os.path.join(CURRENT_DIR, 'debug' \
+                                              if DEBUG else 'release', '.include.sha256'))):
                 raise RuntimeError("Source code is changed.")
             log.info("Shared library is up-to-date.\n")
         except Exception as e:
@@ -144,8 +153,6 @@ mkdir objdir
 cd objdir
 cmake .. \\
 -DPREFIX_PATH={CURRENT_DIR} \\
--DCMAKE_C_COMPILER={os.path.join(ROOT_DIR, "bin", "gcc")} \\
--DCMAKE_CXX_COMPILER={os.path.join(ROOT_DIR, "bin", "g++")} \\
 -DCMAKE_CUDA_COMPILER={CUDA_PATH}/bin/nvcc \\
 -DUSE_CUDSS={USE_CUDSS} \\
 -DCAFFE2_USE_CUDNN={USE_CUDNN} \\

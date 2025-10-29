@@ -18,6 +18,8 @@ def install_cuda_libs(lib_name      : str,
                       cuda_version  : Version,
                       condition     : Callable = lambda kv : True)-> str:
 
+        os_name = os_name.lower()
+        os_arch = os_arch.lower()
         # Check for the prior installation (root_dir/{lib_name}*)
         _prior_installation = [Version(f.split(f"{lib_name}-")[-1]) for f in os.listdir(root_dir) if f.startswith(f"{lib_name}-")]
         for _prior in _prior_installation:
@@ -63,8 +65,11 @@ def install_cuda_libs(lib_name      : str,
                 log.debug(f"{'Version:':<20}{value['version']}")
                 if not condition((key, value)): log.info(f"Skipping the {key} installation."); continue
                 try:
-                    _cuda_variants = value.pop('cuda_variants', None)
-                    if _cuda_variants is not None: _lib_for_arch = value[f'{os_name}-{os_arch}'][f'cuda{cuda_version.major}']
+                    _cuda_variants = value.pop('cuda_variant', None)
+                    log.debug(f"{'OS Variant:':<20}{os_name}-{os_arch}")
+                    if _cuda_variants is not None: 
+                        log.debug(f"{'CUDA Variant:':<20}cuda{cuda_version.major}")
+                        _lib_for_arch = value[f'{os_name}-{os_arch}'][f'cuda{cuda_version.major}']
                     else: _lib_for_arch = value[f'{os_name}-{os_arch}']
                 except KeyError as e:
                     log.info(f"Failed to find the {os_name}-{os_arch} variant for cuda{cuda_version.major}, Skipping the installation.")
@@ -86,16 +91,23 @@ def install_cuda_libs(lib_name      : str,
                 _extracted_path = _filename.split(sep=".tar")[0]
                 _extracted_path_tree = PathTree(path=os.path.join(_installation_path, _extracted_path), depth_limit=20)
                 log.debug(f"{'Extracted Path:':<20}\n{_extracted_path_tree}")
-                while len(_extracted_path_tree.children) > 0:
+                while True:
+                    if len(_extracted_path_tree) == 0:
+                        _extracted_path_tree.rm()
+                        break
                     _dir = _extracted_path_tree.children[0]
-                    log.debug(f"{'Extracted:':<20}{_dir.name}")
                     _dir.mv(dst=_installation_path_tree)
-                _extracted_path_tree.rm()
-                log.info(f"Installed the {_lable} in path: {_installation_path}\n")
         except Exception as e:
             shutil.rmtree(path=_installation_path)
-            raise RuntimeError(f"Failed to install the {_lable} in path: {_installation_path}\n{e}")
-        if not os.path.isdir(os.path.join(_installation_path, "lib64")): os.symlink(src=os.path.join(_installation_path, "lib"), dst=os.path.join(_installation_path, "lib64"))
+            raise RuntimeError(f"Failed to install the {key} in path: {_installation_path}\n{e}")
+        if os.path.isdir(s=os.path.join(_installation_path, "lib64")):
+            _lib64_dir = _installation_path_tree.get("lib64")
+            _lib_dir   = _installation_path_tree.get("lib")
+            for _item in _lib64_dir.children: _item.mv(dst=_lib_dir)
+            _lib64_dir.rm()
+        if os.path.isdir(s=os.path.join(_installation_path, "lib64")):
+            _installation_path_tree.get("lib64").merge(dst=_installation_path_tree.get("lib"))
+        os.symlink(src=os.path.join(_installation_path, "lib"), dst=os.path.join(_installation_path, "lib64"))
         return _installation_path
 
 def install_nvtx(root_dir : str) -> str:
