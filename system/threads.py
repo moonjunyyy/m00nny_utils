@@ -75,10 +75,10 @@ class _Thread_Pool:
             self.__thread_queue.append(_th)
             self.__queue_cv.notify()
 
-    # def notify(self) -> None:
-    #     with self.__state_cv:
-    #         self.__run_counter -= 1
-    #         self.__state_cv.notify()
+    def notify(self) -> None:
+        with self.__state_cv:
+            self.__run_counter -= 1
+            self.__state_cv.notify()
 
     def manager(self) -> None:
         while not self.__run_flag.is_set():
@@ -88,10 +88,12 @@ class _Thread_Pool:
                         self.__queue_cv.wait()  # Wait for the thread queue to be not empty.
                         self.__thread_queue.sort()  # Sort the thread queue by the thread depth and lifetime.
                     __th = self.__thread_queue.pop(0)
-                self.__run_counter += 1
+                with self.__state_cv:
+                    self.__run_counter += 1
                 __th.run()  # Run the thread.
-                # with self.__state_cv:
-                #    if self.__run_counter >= self.__max_running_threads: self.__state_cv.wait()
+                with self.__state_cv:
+                    if self.__run_counter >= self.__max_running_threads:
+                        self.__state_cv.wait()
             except Exception as e:
                 print(
                     f"Thread manager raised an exception: {e}" + traceback.format_exc(),
@@ -153,7 +155,7 @@ class Thread:
                 f"Thread raised an exception: \n\t{str(e)}\n\t"
                 + "\n\t".join(traceback.format_exc().split(sep="\n"))
             )
-        # self.__thread_pool.notify()
+        self.__thread_pool.notify()
         self.done.set()
         self.running.clear()
 

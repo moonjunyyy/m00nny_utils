@@ -59,22 +59,23 @@ class ProgressBar:
 
     def init_progress(self) -> None:
         # prefix current/total [progress bar] percentage [elapsed_time (+ elapsed_iter_time) / total_time / descriptions]
-        print(f"{self.prefix}", end="")
-        print(
-            f"{self.current:>{count_digits(number=self.length)}}/{self.length:>{count_digits(number=self.length)}} [",
-            end="",
+        _print_str = (
+            f"{self.prefix}" +
+            f"{self.current:>{count_digits(number=self.length)}}/" +
+            f"{self.length:>{count_digits(number=self.length)}} [" +
+            f"{EscapeCodes.TERMINAL_CHAR_COLOR[self.color]}" +
+            f"{self.generate_progress_bar(progress=0)}" +
+            f"{EscapeCodes.TERMINAL_RESET}" +
+            "] 0.00%" +
+            " [00:00:00 (+ 00:00:00) / 00:00:00"
         )
-        print(EscapeCodes.TERMINAL_CHAR_COLOR[self.color], end="")
-        print(f"{self.generate_progress_bar(progress=0)}", end="")
-        print(EscapeCodes.TERMINAL_RESET, end="")
-        print(f"] 0.00%", end="")
-        print(f" [00:00:00 (+ 00:00:00) / 00:00:00", end="")
         for key, value in self.descriptions.items():
             if "__" in key:
-                print(f" / {value}", end="")
+                _print_str += f" / {value}"
             else:
-                print(f" / {key}: {value}", end="")
-        print("]", end="", flush=True)
+                _print_str += f" / {key}: {value}"
+        _print_str += "]"
+        print(_print_str, end="", flush=True)
 
     def print_progress(self) -> None:
         current_time = time.time()
@@ -88,25 +89,22 @@ class ProgressBar:
         self.total_time = self.elapsed_time + self.remaining
         bar = self.generate_progress_bar(progress=self.progress)
 
-        # Clear the current line
-        print(f"\r{EscapeCodes.TERMINAL_CLEAR_LINE}", end="")
-        # prefix current/total [progress bar] percentage [elapsed_time (+ elapsed_iter_time) / total_time / descriptions]
-        print(f"{self.prefix}", end="")
-        print(f"{self.current:>{count_digits(number=self.length)}}/", end="")
-        print(f"{self.length:>{count_digits(number=self.length)}} [", end="")
-        print(f"{EscapeCodes.TERMINAL_CHAR_COLOR[self.color]}", end="")
-        print(f"{bar}", end="")
-        print(f"{EscapeCodes.TERMINAL_RESET}", end="")
-        print(f"] {self.progress * 100:3.2f}% ", end="")
-        print(f"{seconds_to_human_readable(seconds=self.elapsed_time)} ", end="")
-        print(
-            f"(+ {seconds_to_human_readable(seconds=self.elapsed_time_per_iter)}) ",
-            end="",
+        _print_str = (
+            f"\r{EscapeCodes.TERMINAL_CLEAR_LINE}" +
+            f"{self.prefix}" +
+            f"{self.current:>{count_digits(number=self.length)}}/" +
+            f"{self.length:>{count_digits(number=self.length)}} [" +
+            f"{EscapeCodes.TERMINAL_CHAR_COLOR[self.color]}" +
+            f"{bar}" +
+            f"{EscapeCodes.TERMINAL_RESET}" +
+            f"] {self.progress * 100:3.2f}% " +
+            f"{seconds_to_human_readable(seconds=self.elapsed_time)} " +
+            f"(+ {seconds_to_human_readable(seconds=self.elapsed_time_per_iter)}) "
         )
-        print(f"{seconds_to_human_readable(seconds=self.total_time)}", end="")
         for key, value in self.descriptions.items():
             if "__" in key:
-                print(f" / {value}", end="")
+                _print_str += f" / {value}"
             else:
-                print(f" / {key}: {value}", end="")
-        print("]", end="", flush=True)
+                _print_str += f" / {key}: {value}"
+        _print_str += "]"
+        print(_print_str, end="", flush=True)

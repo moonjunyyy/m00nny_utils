@@ -33,7 +33,7 @@ def __bootstrap__() -> None:
         "LIBM00NNY_ROOT_PATH",
         os.path.abspath(
             path=os.path.join(
-                os.expanduser("~"),
+                os.path.expanduser("~"),
                 "..",
                 "..",
                 ".."
@@ -120,7 +120,7 @@ def __bootstrap__() -> None:
         ), "Libtorch shared library path not found."
         _cmake_paths.append(LIBTORCH_PATH)
 
-            if USE_CUDNN:
+        if USE_CUDNN:
             # Check the CuDNN
             CUDNN_PATH = install_cuda_libs(
                 lib_name="cudnn",
@@ -320,4 +320,4 @@ rm -rf objdir
     spec.loader.exec_module(module=module)
 
 
-__bootstrap__()
+# __bootstrap__()
