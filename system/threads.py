@@ -5,98 +5,10 @@ import time
 import os
 
 class ThreadException(Exception): pass
-# class _Thread:
-#     def __init__(self, group=None, target=None, name=None, daemon=False, args=(), kwargs={}) -> None:
-#         self.__added_time = time.time()
-#         self.__exec_information = {
-#             "group" : group,
-#             "target": target,
-#             "name"  : name,
-#             "daemon": daemon,
-#             "args"  : args,
-#             "kwargs": kwargs
-#         }
-#         self.__local_lock = threading.Lock()
-#         # Generate the thread id with 16 bytes.
-#         # (2 ** 16 available thread id for each depth, former bytes comes from the parent thread id)
-#         __id = os.urandom(2).hex()
-#         self.return_val = None
-# 
-#     def __getitem__(self, key) -> "_Thread":
-#         if key[:self.__depth*4] != self.__thread_id:
-#             __parent = self.find_by_id(thread_id=key[:self.__depth*4]) # Find the parent thread.
-#             return __parent[key[self.__depth*4:]]
-#         else:
-#             key = key[-4:] # Get the last 4 characters (16 bits) of the key.
-#             return self.__children[key]
-#         
-#     def __setitem__(self, key, value) -> None:
-#         if key[:self.__depth*4] != self.__thread_id:
-#             __parent = self.find_by_id(thread_id=key[:self.__depth*4])
-#             __parent[key[self.__depth*4:]] = value
-#         else:
-#             key = key[-4:]
-#             self.__children[key] = value
-# 
-#     def find_by_id(self, thread_id:str) -> "_Thread":
-#         __depth = len(thread_id) // 4 # The depth of the thread id Hexadecimal string.
-#         if __depth > self.__head.__max_depth: raise KeyError("Thread id not found")
-#         __thread = self.__head
-#         for _i in range(0, len(thread_id), 4):
-#             __thread = __thread[thread_id[_i:_i+4]]
-#         return __thread
-# 
-#     def find_by_posix_id(self, posix_id:int) -> "_Thread":
-#         __thread_id = self.__head.posix_id_to_thread_id.get(posix_id, None)
-#         if __thread_id is None: raise KeyError("Thread id not found")
-#         return self.find_by_id(thread_id=__thread_id)
-#     
-#     def get_thread_id_by_posix_id(self, posix_id:int) -> str:
-#         return self.__head.posix_id_to_thread_id.get(posix_id, None)
-# 
-#     def run(self) -> None:
-#         __th = threading.Thread(group =self.__exec_information["group"],
-#                             target=self.__target_wrapper,
-#                             name  =self.__exec_information["name"],
-#                             daemon=self.__exec_information["daemon"]
-#                          )
-#         self.__head.posix_id_to_thread_id[__th.ident] = self.__thread_id
-#         __th.start()
-# 
-#     def __target_wrapper(self) -> None:
-#         self.running.set()
-#         try:
-#             self.return_val = self.__exec_information["target"](
-#                                      *self.__exec_information["args"],
-#                                     **self.__exec_information["kwargs"])
-#         except Exception as e:
-#             self.return_val = ThreadException(
-#                                 f"Thread raised an exception: \n\t{str(e)}\n\t" + \
-#                                 "\n\t".join(traceback.format_exc().split(sep="\n")))
-#         self.running.clear()
-#         self.done.set()
-# 
-#     def __eq__(self, other) -> bool:
-#         if   isinstance(other, int): return self.__thread_id == other
-#         elif isinstance(other, _Thread): return self.__thread_id == other.__thread_id
-#         return False
-#     
-#     def __gt__(self, other) -> bool:
-#         # For thread sorting, the thread with deeper and older thread is the first.
-#         if self.__depth < other.__depth: return True
-#         elif self.__depth == other.__depth: return self.__added_time > other.__added_time
-#     
-#     def __lt__(self, other) -> bool:
-#         # For thread sorting, tne thread with deeper and older thread is the first.
-#         if self.__depth > other.__depth: return True
-#         elif self.__depth == other.__depth: return self.__added_time < other.__added_time
-# 
-#     def __str__(self) -> str:
-#         return f"Thread( Thread id: {self.__thread_id} )"
-    
+
 # Singleton style Thread queue, which is used to manage the threads
 class _Thread_Pool:
-    '''
+    """
     Thread pool manager.
     This class is a singleton class.
     Manage the threads and thread queue, and return the result of the thread.
@@ -169,7 +81,7 @@ class _Thread_Pool:
         if self.__thread_manager and self.__thread_manager.is_alive(): self.__thread_manager.join()
 
 class Thread:
-    '''
+    """
     Thread class with return value.
     How many threads you start, the number of threads running at the same time is limited to the number of CPU cores.
     Abstract the thread management process.

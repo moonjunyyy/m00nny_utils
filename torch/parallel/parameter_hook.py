@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 from functools import partial
 
+
 class ParameterHook:
     def __init__(self, module):
         self.module = module
@@ -18,8 +19,14 @@ class ParameterHook:
                 self._params.append(param)
                 self._reduce_handles.append(None)
                 self._grad_buffers.append(torch.zeros_like(param))
-                self._hook_handles.append(param.register_hook(partial(self._hook, _index)))
-                self._post_accumulate_grad_hook_handles.append(param.register_post_accumulate_grad_hook(partial(self._join, _index)))
+                self._hook_handles.append(
+                    param.register_hook(partial(self._hook, _index))
+                )
+                self._post_accumulate_grad_hook_handles.append(
+                    param.register_post_accumulate_grad_hook(
+                        partial(self._join, _index)
+                    )
+                )
                 _index += 1
 
     def _hook(self, index, grad):
@@ -29,12 +36,15 @@ class ParameterHook:
         return grad
 
     def _join(self, index, *args):
-        while self._reduce_handles[index] is None: continue
+        while self._reduce_handles[index] is None:
+            continue
         self._reduce_handles[index].wait()
         self._reduce_handles[index] = None
         self._params[index].grad.copy_(self._grad_buffers[index])
         self._grad_buffers[index].zero_()
 
     def __del__(self):
-        for handle in self._hook_handles: handle.remove()
-        for handle in self._post_accumulate_grad_hook_handles: handle.remove()
+        for handle in self._hook_handles:
+            handle.remove()
+        for handle in self._post_accumulate_grad_hook_handles:
+            handle.remove()

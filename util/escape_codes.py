@@ -1,21 +1,22 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class EscapeCodes:
     # Reset all
     TERMINAL_RESET = "\033[0m"
 
     # Colors
-    TERMINAL_CHAR_BLACK   = "\033[30m"
-    TERMINAL_CHAR_RED     = "\033[31m"
-    TERMINAL_CHAR_GREEN   = "\033[32m"
-    TERMINAL_CHAR_YELLOW  = "\033[33m"
-    TERMINAL_CHAR_BLUE    = "\033[34m"
+    TERMINAL_CHAR_BLACK = "\033[30m"
+    TERMINAL_CHAR_RED = "\033[31m"
+    TERMINAL_CHAR_GREEN = "\033[32m"
+    TERMINAL_CHAR_YELLOW = "\033[33m"
+    TERMINAL_CHAR_BLUE = "\033[34m"
     TERMINAL_CHAR_MAGENTA = "\033[35m"
-    TERMINAL_CHAR_CYAN    = "\033[36m"
-    TERMINAL_CHAR_WHITE   = "\033[37m"
-    TERMINAL_CHAR_RESET   = "\033[39m"
-    TERMINAL_CHAR_COLOR= {
+    TERMINAL_CHAR_CYAN = "\033[36m"
+    TERMINAL_CHAR_WHITE = "\033[37m"
+    TERMINAL_CHAR_RESET = "\033[39m"
+    TERMINAL_CHAR_COLOR = {
         "k": TERMINAL_CHAR_BLACK,
         "r": TERMINAL_CHAR_RED,
         "g": TERMINAL_CHAR_GREEN,
@@ -24,36 +25,36 @@ class EscapeCodes:
         "m": TERMINAL_CHAR_MAGENTA,
         "c": TERMINAL_CHAR_CYAN,
         "w": TERMINAL_CHAR_WHITE,
-    "reset": TERMINAL_CHAR_RESET
+        "reset": TERMINAL_CHAR_RESET,
     }
 
     # Styles
-    TERMINAL_STYLE_BOLD      = "\033[1m"
+    TERMINAL_STYLE_BOLD = "\033[1m"
     TERMINAL_STYLE_UNDERLINE = "\033[4m"
-    TERMINAL_STYLE_BLINK     = "\033[5m"
-    TERMINAL_STYLE_REVERSE   = "\033[7m"
-    TERMINAL_STYLE_CONCEAL   = "\033[8m"
-    TERMINAL_STYLE_RESET     = "\033[0m"
-    TERMINAL_STYLE= {
+    TERMINAL_STYLE_BLINK = "\033[5m"
+    TERMINAL_STYLE_REVERSE = "\033[7m"
+    TERMINAL_STYLE_CONCEAL = "\033[8m"
+    TERMINAL_STYLE_RESET = "\033[0m"
+    TERMINAL_STYLE = {
         "bold": TERMINAL_STYLE_BOLD,
         "underline": TERMINAL_STYLE_UNDERLINE,
         "blink": TERMINAL_STYLE_BLINK,
         "reverse": TERMINAL_STYLE_REVERSE,
         "conceal": TERMINAL_STYLE_CONCEAL,
-        "reset": TERMINAL_STYLE_RESET
+        "reset": TERMINAL_STYLE_RESET,
     }
 
     # Background colors
-    TERMINAL_BG_BLACK   = "\033[40m"
-    TERMINAL_BG_RED     = "\033[41m"
-    TERMINAL_BG_GREEN   = "\033[42m"
-    TERMINAL_BG_YELLOW  = "\033[43m"
-    TERMINAL_BG_BLUE    = "\033[44m"
+    TERMINAL_BG_BLACK = "\033[40m"
+    TERMINAL_BG_RED = "\033[41m"
+    TERMINAL_BG_GREEN = "\033[42m"
+    TERMINAL_BG_YELLOW = "\033[43m"
+    TERMINAL_BG_BLUE = "\033[44m"
     TERMINAL_BG_MAGENTA = "\033[45m"
-    TERMINAL_BG_CYAN    = "\033[46m"
-    TERMINAL_BG_WHITE   = "\033[47m"
-    TERMINAL_BG_RESET   = "\033[49m"
-    TERMINAL_BG_COLOR= {
+    TERMINAL_BG_CYAN = "\033[46m"
+    TERMINAL_BG_WHITE = "\033[47m"
+    TERMINAL_BG_RESET = "\033[49m"
+    TERMINAL_BG_COLOR = {
         "k": TERMINAL_BG_BLACK,
         "r": TERMINAL_BG_RED,
         "g": TERMINAL_BG_GREEN,
@@ -62,7 +63,7 @@ class EscapeCodes:
         "m": TERMINAL_BG_MAGENTA,
         "c": TERMINAL_BG_CYAN,
         "w": TERMINAL_BG_WHITE,
-    "reset": TERMINAL_BG_RESET
+        "reset": TERMINAL_BG_RESET,
     }
 
     # Control characters

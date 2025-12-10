@@ -9,6 +9,7 @@ log = Log(name="PathTree")
 _Node = TypeVar("_Node", bound="PathNode")
 _Tree = TypeVar("_Tree", bound="PathTree")
 
+
 class PathNode:
     @dataclass
     class Type:
@@ -32,25 +33,33 @@ class PathNode:
         self.parse()
 
     def __str__(self) -> str:
-        _string =  f"{self.depth * '  ' + '| '}{self.name}"
+        _string = f"{self.depth * '  ' + '| '}{self.name}"
         _len_interval = 96 - len(_string)
-        _string += f"{' ' * _len_interval}" + f"{bytes_to_human_readable(size=self.size)}\n"
+        _string += (
+            f"{' ' * _len_interval}" + f"{bytes_to_human_readable(size=self.size)}\n"
+        )
         if self.type == PathNode.Type.DIRECTORY:
             for n, _child in enumerate(self.children):
-                if n == 4: _string += f"{self.depth * '  ' + '| '}...\n"; break
+                if n == 4:
+                    _string += f"{self.depth * '  ' + '| '}...\n"
+                    break
                 _string += _child.__str__()
         return _string
     def __repr__(self) -> str: return self.__str__()
     
     def __eq__(self, other) -> bool:
-        if   isinstance(other, str):      return self.name == other
-        elif isinstance(other, PathNode): return self.name == other.name
+        if isinstance(other, str):
+            return self.name == other
+        elif isinstance(other, PathNode):
+            return self.name == other.name
         return False
+
     def __gt__(self, other) -> bool:
-        return self.name > other.name # Name sorting
+        return self.name > other.name  # Name sorting
         # return self.size > other.size # Size sorting
+
     def __lt__(self, other) -> bool:
-        return self.name < other.name # Name sorting
+        return self.name < other.name  # Name sorting
         # return self.size < other.size # Size sorting
     # Function for "in" operator
     def __contains__(self, key) -> bool:
@@ -62,17 +71,23 @@ class PathNode:
             _ret   = len(self.children)
         return _ret
     def is_empty(self) -> bool:
-        if self.type != PathNode.Type.DIRECTORY: return False
+        if self.type != PathNode.Type.DIRECTORY:
+            return False
         for _child in self.children:
-            if _child.is_empty(): _child.rm()
+            if _child.is_empty():
+                _child.rm()
         return len(self.children) == 0
 
     @property
     def type(self) -> str:
-        if os.path.isdir(s=self.path):     return PathNode.Type.DIRECTORY
-        if os.path.isfile(path=self.path): return PathNode.Type.FILE
-        if os.path.islink(path=self.path): return PathNode.Type.LINK
+        if os.path.isdir(s=self.path):
+            return PathNode.Type.DIRECTORY
+        if os.path.isfile(path=self.path):
+            return PathNode.Type.FILE
+        if os.path.islink(path=self.path):
+            return PathNode.Type.LINK
         return PathNode.Type.OTHER
+
     @property
     def path(self) -> str:      return os.path.join(self.parent.path, self.name) if self.parent else self.name
     @property
@@ -107,9 +122,9 @@ class PathNode:
         with self.children_lock:
             self.children.append(_node)
         return _node
-    
+
     def touch(self, name: str) -> _Node:
-        open(file=os.path.join(self.path, name), mode='w').close()
+        open(file=os.path.join(self.path, name), mode="w").close()
         _node = PathNode(name=name, parent=self)
         with self.children_lock:
             self.children.append(_node)
@@ -135,7 +150,9 @@ class PathNode:
                 self.rm()
                 return
             else:
-                log.warning(f"{self.name} is already exists in {dst.name}. Overwriting...")
+                log.warning(
+                    f"{self.name} is already exists in {dst.name}. Overwriting..."
+                )
                 _subnode.rm()
         log.debug(f"Moving {self.name} to {dst.name}...")
         os.rename(src=self.path, dst=os.path.join(dst.path, self.name))
@@ -211,6 +228,7 @@ class PathNode:
 
     def __getitem__(self, key) -> _Node:
         return self.find(pattern=key)
+
 
 class PathTree(PathNode):
     def __init__(
