@@ -4,15 +4,16 @@ from torch.utils.data.sampler import Sampler
 from typing import Optional, Sized, Iterable, Tuple, Union
 from ..datasets.DomainDataset import DomainDataset
 
+
 class DGFSCILSampler:
     def __init__(
             self,
             data_source: Sized,
             num_tasks: int,
             rnd_seed: int,
-            cur_iter: int= 0,
-            num_replicas: int=None,
-            rank: int=None,
+            cur_iter: int = 0,
+            num_replicas: int = None,
+            rank: int = None,
             *,
             task_config: Optional[Iterable[Iterable[Tuple[int, int]]]] = None,
     ) -> None:
@@ -40,11 +41,13 @@ class DGFSCILSampler:
         """
         if num_replicas is None:
             if not dist.is_available():
-                raise RuntimeError("Requires distributed package to be available")
+                raise RuntimeError(
+                    "Requires distributed package to be available")
             num_replicas = dist.get_world_size()
         if rank is None:
             if not dist.is_available():
-                raise RuntimeError("Requires distributed package to be available")
+                raise RuntimeError(
+                    "Requires distributed package to be available")
             rank = dist.get_rank()
         self.data_source = data_source
         self.num_replicas = num_replicas
@@ -55,11 +58,12 @@ class DGFSCILSampler:
         self.task_config = task_config
         if self.task_config is not None:
             if len(self.task_config) != self.num_tasks:
-                raise ValueError("Length of task_config must be equal to num_tasks")
+                raise ValueError(
+                    "Length of task_config must be equal to num_tasks")
         self.tasks = [[] for _ in range(self.num_tasks)]
         self._task_ready = False
         self._bootstrap()
-        
+
     def _config_tasks(self, style: str = "CIL"):
         # Default CIL configuration
         self.domain_class_indices = []
@@ -73,54 +77,58 @@ class DGFSCILSampler:
         )
         task_config = []
         class_list = list(classes)
-        domain_vec = torch.arange(n_domain).view(-1, 1, 1).repeat(1, n_class, 1)
+        domain_vec = torch.arange(
+            n_domain).view(-1, 1, 1).repeat(1, n_class, 1)
         class_vec = torch.arange(n_class).view(1, -1, 1).repeat(n_domain, 1, 1)
         domain_class_pairs = torch.cat([domain_vec, class_vec], dim=-1)
 
-        if style = "CIL":
-            class_permute = torch.randperm(n_class, generator=torch.Generator().manual_seed(self.rnd_seed))
+        if style == "CIL":
+            class_permute = torch.randperm(
+                n_class, generator=torch.Generator().manual_seed(self.rnd_seed))
             for task_id in range(self.num_tasks):
                 selected_classes = class_permute[
-                    task_id * classes_per_task : (task_id + 1) * classes_per_task
+                    task_id * classes_per_task: (task_id + 1) * classes_per_task
                 ]
                 task_config.append(
-                    domain_class_pairs[:, selected_classes, :].view(-1, 2).tolist()
+                    domain_class_pairs[:, selected_classes,
+                                       :].view(-1, 2).tolist()
                 )
         elif style == "DIL":
-            domain_permute = torch.randperm(n_domain, generator=torch.Generator().manual_seed(self.rnd_seed))
+            domain_permute = torch.randperm(
+                n_domain, generator=torch.Generator().manual_seed(self.rnd_seed))
             for task_id in range(self.num_tasks):
                 selected_domain = domain_permute[task_id % n_domain]
-                selected_classes = torch.randperm(n_class, generator=torch.Generator().manual_seed(self.rnd_seed + task_id))[:classes_per_task]
+                selected_classes = torch.randperm(n_class, generator=torch.Generator(
+                ).manual_seed(self.rnd_seed + task_id))[:classes_per_task]
                 task_config.append(
-                    domain_class_pairs[selected_domain, selected_classes, :].view(-1, 2).tolist()
+                    domain_class_pairs[selected_domain,
+                                       selected_classes, :].view(-1, 2).tolist()
                 )
         elif style == "VIL":
-            cross_permute = torch.randperm(n_domain * n_class, generator=torch.Generator().manual_seed(self.rnd_seed))
+            cross_permute = torch.randperm(
+                n_domain * n_class, generator=torch.Generator().manual_seed(self.rnd_seed))
             for task_id in range(self.num_tasks):
                 selected_pairs = cross_permute[
-                    task_id * classes_per_task : (task_id + 1) * classes_per_task
+                    task_id * classes_per_task: (task_id + 1) * classes_per_task
                 ]
                 selected_domain = selected_pairs // n_class
                 selected_classes = selected_pairs % n_class
-                domain_class_pairs = torch.stack([selected_domain, selected_classes], dim=-1)
+                domain_class_pairs = torch.stack(
+                    [selected_domain, selected_classes], dim=-1)
                 task_config.append(
                     domain_class_pairs.view(-1, 2).tolist()
                 )
         self.task_config = task_config
 
-
     def _bootstrap(self):
-            # Strictly follow the task_config
-            self.domain_class_indices = []
-            for task_id in range(self.num_tasks):
-                domain_class_pairs = self.task_config[task_id]
-                indices = []
-                for domain_id, class_id in domain_class_pairs:
-                    indices += [
-                        idx for idx, (d, c) in enumerate(self.data_source.domains_targets)
-                        if d == domain_id and c == class_id
-                    ]
-                self.domain_class_indices.append(indices)
-
-
-
+        # Strictly follow the task_config
+        self.domain_class_indices = []
+        for task_id in range(self.num_tasks):
+            domain_class_pairs = self.task_config[task_id]
+            indices = []
+            for domain_id, class_id in domain_class_pairs:
+                indices += [
+                    idx for idx, (d, c) in enumerate(self.data_source.domains_targets)
+                    if d == domain_id and c == class_id
+                ]
+            self.domain_class_indices.append(indices)
