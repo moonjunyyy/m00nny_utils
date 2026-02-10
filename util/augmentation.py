@@ -3,13 +3,16 @@ from typing import Iterable
 
 # Meta Augmentation Operations
 
+
 class Augmentation:
     """Base class: ffmpeg filter graph builder"""
+
     def apply(self, stream, meta):
         return stream, meta
- 
+
     def __call__(self, stream, meta):
         return self.apply(stream, meta)
+
 
 class Compose(Augmentation):
     def __init__(self, ops: Iterable[Augmentation]):
@@ -21,6 +24,8 @@ class Compose(Augmentation):
         return stream, meta
 
 # Vison Augmentation Operations
+
+
 class RandomHFlip(Augmentation):
     def __init__(self, p=0.5, seed=None):
         self.p = p
@@ -43,7 +48,7 @@ class RandomVFlip(Augmentation):
     def apply(self, stream, meta):
         w, h = meta.get("width"), meta.get("height")
         if not w or not h:
-            return stream, meta 
+            return stream, meta
         if self.rng.random() < self.p:
             return stream.vflip(), meta
         return stream, meta
@@ -57,7 +62,7 @@ class RandomRotate(Augmentation):
     def apply(self, stream, meta):
         w, h = meta.get("width"), meta.get("height")
         if not w or not h:
-            return stream, meta 
+            return stream, meta
         angle = self.rng.uniform(-self.max_deg, self.max_deg) * np.pi / 180.0
         return stream.filter("rotate", angle), meta
 
@@ -70,7 +75,7 @@ class RandomCrop(Augmentation):
     def apply(self, stream, meta):
         w, h = meta.get("width"), meta.get("height")
         if not w or not h:
-            return stream, meta 
+            return stream, meta
             # Cannot crop if dimensions are unknown
             # This is assumed not to be image or video file
         cw, ch = int(w * self.crop_ratio), int(h * self.crop_ratio)
@@ -90,7 +95,7 @@ class ColorJitter(Augmentation):
     def apply(self, stream, meta):
         w, h = meta.get("width"), meta.get("height")
         if not w or not h:
-            return stream, meta 
+            return stream, meta
         bright = 1 + self.rng.uniform(-self.b, self.b)
         contrast = 1 + self.rng.uniform(-self.c, self.c)
         sat = 1 + self.rng.uniform(-self.s, self.s)
@@ -106,12 +111,14 @@ class Resize(Augmentation):
     def apply(self, stream, meta):
         w, h = meta.get("width"), meta.get("height")
         if not w or not h:
-            return stream, meta 
+            return stream, meta
         meta["width"] = self.width
         meta["height"] = self.height
         return stream.filter("scale", self.width, self.height), meta
 
 # Video Specific Temporal Augmentations
+
+
 class UniformTemporalSubFrame(Augmentation):
     def __init__(self, num_samples):
         self.num_samples = num_samples
@@ -121,9 +128,11 @@ class UniformTemporalSubFrame(Augmentation):
         if not total_frames:
             return stream  # Cannot subsample if frame count is unknown
         step = max(total_frames // self.num_samples, 1)
-        select_expr = "+".join(f"eq(n\\,{i})" for i in range(0, total_frames, step)[:self.num_samples])
-        meta ["nb_frames"] = min(self.num_samples, total_frames)
-        meta ["frame_rate"] = meta ["frame_rate"] * (meta ["nb_frames"] / total_frames)
+        select_expr = "+".join(f"eq(n\\,{i})" for i in range(0,
+                               total_frames, step)[:self.num_samples])
+        meta["nb_frames"] = min(self.num_samples, total_frames)
+        meta["frame_rate"] = meta["frame_rate"] * \
+            (meta["nb_frames"] / total_frames)
         return stream.filter("select", select_expr).filter("setpts", "N/(FRAME_RATE*TB)"), meta
 
 
@@ -155,6 +164,7 @@ class RandomPitchShift(Augmentation):
         meta["duration"] = meta["nb_samples"] / meta["sample_rate"]
         return stream.filter("asetrate", sr * ratio).filter("atempo", 1 / ratio), meta
 
+
 class Resample(Augmentation):
     def __init__(self, target_sr):
         self.target_sr = target_sr
@@ -165,6 +175,7 @@ class Resample(Augmentation):
         meta["sample_rate"] = self.target_sr
         meta["nb_samples"] = int(meta["duration"] * self.target_sr)
         return stream.filter("aresample", self.target_sr), meta
+
 
 class UniformAudioSubsample(Augmentation):
     def __init__(self, target_nb_samples):
@@ -177,7 +188,9 @@ class UniformAudioSubsample(Augmentation):
         if total_samples <= self.target_nb_samples:
             return stream, meta  # No subsampling needed
         step = total_samples / self.target_nb_samples
-        select_expr = "+".join(f"eq(n\\,{int(i * step)})" for i in range(self.target_nb_samples))
+        select_expr = "+".join(f"eq(n\\,{int(i * step)
+                                         })" for i in range(self.target_nb_samples))
         meta["nb_samples"] = self.target_nb_samples
-        meta["sample_rate"] = meta["sample_rate"] * (self.target_nb_samples / total_samples)
+        meta["sample_rate"] = meta["sample_rate"] * \
+            (self.target_nb_samples / total_samples)
         return stream.filter("aselect", select_expr).filter("asetpts", "N/SR/TB"), meta
