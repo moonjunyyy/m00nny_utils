@@ -1,9 +1,8 @@
 import numpy as np
 from typing import Iterable
 
+
 # Meta Augmentation Operations
-
-
 class Augmentation:
     """Base class: ffmpeg filter graph builder"""
 
@@ -23,9 +22,36 @@ class Compose(Augmentation):
             stream, meta = op(stream, meta)
         return stream, meta
 
+
+class RandomSelection(Augmentation):
+    def __init__(self, ops: Iterable[Augmentation], n_apply=1, seed=None):
+        self.ops = ops
+        self.n_apply = n_apply
+        self.rng = np.random.default_rng(seed)
+
+    def apply(self, stream, meta):
+        op = self.rng.choice(self.ops)
+        for _ in range(self.n_apply - 1):
+            op = self.rng.choice(self.ops)
+            stream, meta = op(stream, meta)
+        return stream, meta
+
+
+class GaussianNoise(Augmentation):
+    def __init__(self, max_noise=0.05, seed=None):
+        self.rng = np.random.default_rng(seed)
+        self.noise_level = max_noise
+
+    def apply(self, stream, meta):
+        w, h = meta.get("width"), meta.get("height")
+        if not w or not h:
+            return stream, meta
+        stream = stream.filter(
+            noise=f"alls={self.rng.uniform(0, self.noise_level)}")
+        return stream, meta
+
+
 # Vison Augmentation Operations
-
-
 class RandomHFlip(Augmentation):
     def __init__(self, p=0.5, seed=None):
         self.p = p
@@ -100,7 +126,11 @@ class ColorJitter(Augmentation):
         contrast = 1 + self.rng.uniform(-self.c, self.c)
         sat = 1 + self.rng.uniform(-self.s, self.s)
 
-        return stream.filter("eq", brightness=bright, contrast=contrast, saturation=sat), meta
+        return (
+            stream.filter("eq", brightness=bright,
+                          contrast=contrast, saturation=sat),
+            meta,
+        )
 
 
 class Resize(Augmentation):
@@ -116,9 +146,8 @@ class Resize(Augmentation):
         meta["height"] = self.height
         return stream.filter("scale", self.width, self.height), meta
 
+
 # Video Specific Temporal Augmentations
-
-
 class UniformTemporalSubFrame(Augmentation):
     def __init__(self, num_samples):
         self.num_samples = num_samples
@@ -129,10 +158,10 @@ class UniformTemporalSubFrame(Augmentation):
             return stream  # Cannot subsample if frame count is unknown
         step = max(total_frames // self.num_samples, 1)
         select_expr = "+".join(f"eq(n\\,{i})" for i in range(0,
-                               total_frames, step)[:self.num_samples])
+                                                             total_frames, step)[:self.num_samples])
         meta["nb_frames"] = min(self.num_samples, total_frames)
-        meta["frame_rate"] = meta["frame_rate"] * \
-            (meta["nb_frames"] / total_frames)
+        meta["frame_rate"] = meta["frame_rate"] *
+        (meta["nb_frames"] / total_frames)
         return stream.filter("select", select_expr).filter("setpts", "N/(FRAME_RATE*TB)"), meta
 
 
@@ -191,6 +220,6 @@ class UniformAudioSubsample(Augmentation):
         select_expr = "+".join(f"eq(n\\,{int(i * step)
                                          })" for i in range(self.target_nb_samples))
         meta["nb_samples"] = self.target_nb_samples
-        meta["sample_rate"] = meta["sample_rate"] * \
-            (self.target_nb_samples / total_samples)
+        meta["sample_rate"] = meta["sample_rate"] *
+        (self.target_nb_samples / total_samples)
         return stream.filter("aselect", select_expr).filter("asetpts", "N/SR/TB"), meta
