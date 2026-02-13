@@ -1,14 +1,6 @@
-import gc
-import sys
-import time
 import torch
-import random
-import socket
-import _pickle
-import asyncio
 import threading
 from torch import Tensor
-import multiprocessing as mp
 from typing import List, Tuple, Dict, Any, TypeVar, Sequence, Callable
 
 
@@ -125,17 +117,41 @@ class Prefetcher:
         self.output_lock = threading.Lock()
         self.output_cv = threading.Condition(self.output_lock)
         self.flush_event = threading.Event()
-        self.batchsize = 0
+        self.batch_size = 0
         self._worker_cursor = 0
         self._none_count = 0
         self.dots = 3
         self.fetch_thread = None
 
+    class __PrefetcherIterater:
+        def __init__(self, parent):
+            self.parent = parent
+
+        def __next__(self):
+            batch = []
+            if self.parent._none_count >= len(self.parent.workers):
+                for w in self.parent.workers:
+                    w.close()
+                self.parent.workers = []
+                raise StopIteration
+            for b in range(self.parent.batch_size):
+                sample = self.parent.get_worker().get_sample()
+                if sample is None:
+                    self.parent._none_count += 1
+                    if self.parent._none_count == len(self.parent.workers):
+                        break
+                else:
+                    batch.append(sample)
+            if len(batch) == 0:
+                raise StopIteration
+            batch = _build_batch(batch)
+            return batch
+
     def load(
         self,
         dataset: Sequence[Any],
         transform: Callable[[Any,], Tuple[Tensor, ...]],
-        batchsize: int,
+        batch_size: int,
         n_iter: int = 1,
         shuffle: bool = False,
         sampler: torch.utils.data.Sampler = None,
@@ -153,43 +169,13 @@ class Prefetcher:
                 sampler = torch.utils.data.SequentialSampler(dataset)
         else:
             assert not shuffle, 'Cannot use a custom sampler and random = True'
-        self.batchsize = batchsize
+        self.batch_size = batch_size
         self.dataset = dataset
         self.transform = transform
         self.sampler = sampler
         self.n_iter = n_iter
-        self._none_count = 0
         self._worker_cursor = 0
         self.indices = list(self.sampler)
-        for n in range(self.num_workers):
-            worker = _PrefetchWorker(
-                self.dataset,
-                self.transform,
-                self.indices[n::self.num_workers],
-                buffer_len=(self.batchsize // self.num_workers + 1) * 2
-            )
-            worker.run()
-            self.workers.append(worker)
-
-    def __next__(self):
-        batch = []
-        if self._none_count >= len(self.workers):
-            for w in self.workers:
-                w.close()
-            self.workers = []
-            raise StopIteration
-        for b in range(self.batchsize):
-            sample = self.get_worker().get_sample()
-            if sample is None:
-                self._none_count += 1
-                if self._none_count == len(self.workers):
-                    break
-            else:
-                batch.append(sample)
-        if len(batch) == 0:
-            raise StopIteration
-        batch = _build_batch(batch)
-        return batch
 
     def get_worker(self):
         worker = self.workers[self._worker_cursor]
@@ -197,14 +183,33 @@ class Prefetcher:
         self._worker_cursor %= self.num_workers
         return worker
 
+    def create_workers(self):
+        self._none_count = 0
+        for n in range(self.num_workers):
+            worker = _PrefetchWorker(
+                self.dataset,
+                self.transform,
+                self.indices[n::self.num_workers],
+                buffer_len=(self.batch_size // self.num_workers + 1) * 2
+            )
+            worker.run()
+            self.workers.append(worker)
+
+    def stop_workers(self):
+        for worker in self.workers:
+            worker.close()
+        self.workers = []
+
     def __len__(self):
         return (
-            len(self.sampler) // self.batchsize +
-            int(len(self.sampler) % self.batchsize != 0)
+            len(self.sampler) // self.batch_size +
+            int(len(self.sampler) % self.batch_size != 0)
         )
 
     def __iter__(self):
-        return self
+        self.stop_workers()
+        self.create_workers()
+        return Prefetcher.__PrefetcherIterater(self)
 
     def __del__(self):
         for worker in self.workers:

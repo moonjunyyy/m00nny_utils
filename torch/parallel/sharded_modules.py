@@ -1,12 +1,16 @@
-import torch
-import torch.distributed as dist
+import re
+import json
+from os import path
 from typing import Tuple
 
+import torch
+import torch.distributed as dist
 from transformers import AutoModel, AutoConfig
 from safetensors import safe_open
-from ..system.log import Log
+from huggingface_hub import snapshot_download
+from ...system.log import Log
 
-log = Log.get_logger(__name__)
+log = Log(name="sharded_modules")
 
 
 class AllReduce(torch.autograd.Function):
@@ -29,7 +33,8 @@ class AllReduce(torch.autograd.Function):
         elif op == dist.ReduceOp.AVG:
             return grad_output / dist.get_world_size(), None
         else:
-            raise NotImplementedError(f"Impossible to perform backward for {op}")
+            raise NotImplementedError(
+                f"Impossible to perform backward for {op}")
 
 
 class AllGather(torch.autograd.Function):
@@ -40,7 +45,8 @@ class AllGather(torch.autograd.Function):
         if not strict_same_shape:
             local_size = torch.tensor(input.size(), device=device)
             all_sizes = [
-                torch.zeros_like(local_size) for _ in range(dist.get_world_size())
+                torch.zeros_like(local_size)
+                for _ in range(dist.get_world_size())
             ]
             dist.all_gather(all_sizes, local_size)
             max_size = torch.max(torch.stack(all_sizes), dim=0).values
@@ -51,7 +57,8 @@ class AllGather(torch.autograd.Function):
             max_size = torch.tensor(input.size(), device=device)
             all_sizes = [max_size for _ in range(dist.get_world_size())]
             padded = input
-        all_qs_padded = [torch.zeros_like(padded) for _ in range(dist.get_world_size())]
+        all_qs_padded = [torch.zeros_like(padded)
+                         for _ in range(dist.get_world_size())]
         dist.all_gather(all_qs_padded, padded)
         if not strict_same_shape:
             all_qs = []
@@ -111,7 +118,7 @@ class ShardedEmbedding(torch.nn.Module):
             self.min_vocab_num = 0
             self.max_vocab_num = self.num_embeddings
         self.weight = torch.nn.Parameter(
-            embedding.weight[self.min_vocab_num : self.max_vocab_num]
+            embedding.weight[self.min_vocab_num: self.max_vocab_num]
         )
 
     def forward(self, input):
@@ -161,7 +168,7 @@ class ShardedLinear(torch.nn.Module):
                 self.weight = torch.nn.Parameter(
                     linear.weight[
                         self.shard_out_features
-                        * self.rank : self.shard_out_features
+                        * self.rank: self.shard_out_features
                         * (self.rank + 1)
                     ]
                 )
@@ -169,7 +176,7 @@ class ShardedLinear(torch.nn.Module):
                     self.bias = torch.nn.Parameter(
                         linear.bias[
                             self.shard_out_features
-                            * self.rank : self.shard_out_features
+                            * self.rank: self.shard_out_features
                             * (self.rank + 1)
                         ]
                     )
@@ -182,7 +189,7 @@ class ShardedLinear(torch.nn.Module):
                     linear.weight[
                         :,
                         self.shard_in_features
-                        * self.rank : self.shard_in_features
+                        * self.rank: self.shard_in_features
                         * (self.rank + 1),
                     ]
                 )
@@ -198,7 +205,7 @@ class ShardedLinear(torch.nn.Module):
             input = input[
                 ...,
                 self.shard_in_features
-                * self.rank : self.shard_in_features
+                * self.rank: self.shard_in_features
                 * (self.rank + 1),
             ]
         output = torch.nn.functional.linear(input, self.weight, self.bias)
@@ -265,7 +272,7 @@ class shardedConv1D(torch.nn.Module):
                     :,
                     :,
                     self.shard_in_channels
-                    * self.rank : self.shard_in_channels
+                    * self.rank: self.shard_in_channels
                     * (self.rank + 1),
                 ]
             )
@@ -334,7 +341,7 @@ class shardedConv2D(torch.nn.Module):
                     :,
                     :,
                     self.shard_in_channels
-                    * self.rank : self.shard_in_channels
+                    * self.rank: self.shard_in_channels
                     * (self.rank + 1),
                 ]
             )
@@ -399,6 +406,69 @@ def convert_to_sharded_module(
             setattr(module, name, shardedConv2D(child))
 
 
+def _convert_to_sharded_module_recursive(
+    model: torch.nn.Module,
+    embed_parallel_ids: list[str] = [],
+    row_parallel_ids: list[str] = [],
+    col_parallel_ids: list[str] = [],
+    seq_parallel_ids: list[str] = [],
+    conv_parallel_ids: list[str] = [],
+    prefix: str = "",
+) -> torch.nn.Module:
+    for module_name, module in model.named_modules():
+        if (
+            any(re.match(_expression, module_name,)
+                for _expression in embed_parallel_ids) and
+            isinstance(module, torch.nn.Embedding)
+        ):
+            _set_module(
+                module_name,
+                model,
+                ShardedEmbedding(module),
+            )
+        elif (
+            any(re.match(_expression, module_name,)
+                for _expression in row_parallel_ids) and
+            isinstance(module, torch.nn.Linear)
+        ):
+            _set_module(
+                module_name,
+                model,
+                ShardedLinear(module, row_parallel=True),
+            )
+        elif (
+            any(re.match(_expression, module_name,)
+                for _expression in col_parallel_ids) and
+            isinstance(module, torch.nn.Linear)
+        ):
+            _set_module(
+                module_name,
+                model,
+                ShardedLinear(module, row_parallel=False),
+            )
+        elif (
+            any(re.match(_expression, module_name,)
+                for _expression in conv_parallel_ids) and
+            isinstance(module, torch.nn.Conv1d)
+        ):
+            _set_module(
+                module_name,
+                model,
+                shardedConv1D(module),
+            )
+        elif (
+            any(re.match(_expression, module_name,)
+                for _expression in conv_parallel_ids) and
+            isinstance(module, torch.nn.Conv2d)
+        ):
+            _set_module(
+                module_name,
+                model,
+                shardedConv2D(module),
+            )
+    return model
+
+
 def load_transformers_as_sharded_module(
     model_name_or_path: str,
     embed_parallel_ids: list[str] = [],
@@ -413,72 +483,30 @@ def load_transformers_as_sharded_module(
     weight_location = snapshot_download(
         repo_id=model_name_or_path
     )
-    
-    for module_name, module in model.named_modules():
-    _decoder_layers = model.language_model.model.layers
-    _new_layers = []
-    _n_layers = len(_decoder_layers)
-    state_dict = {}
-    metadata = json.load(open(f"{path.join(weight_location, "model.safetensors.index.json")}"))
 
-    local_rank = dist.get_rank() if dist.is_initialized() else 0
+    state_dict = {}
+    metadata = json.load(
+        open(f"{path.join(weight_location, "model.safetensors.index.json")}"))
+
+    rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
 
-    for module_name, module in model.named_modules():
-        if any(name in _id for _id in embed_parallel_ids) and isinstance(
-            module, torch.nn.Embedding
-        ):
-            _set_module(
-                module_name,
-                model,
-                ShardedEmbedding(module),
-            )
-        elif any(name in _id for _id in row_parallel_ids) and isinstance(
-            module, torch.nn.Linear
-        ):
-            _set_module(
-                module_name,
-                model,
-                ShardedLinear(module, row_parallel=True),
-            )
-        elif any(name in _id for _id in col_parallel_ids) and isinstance(
-            module, torch.nn.Linear
-        ):
-            _set_module(
-                module_name,
-                model,
-                ShardedLinear(module, row_parallel=False),
-            )
-        elif any(name in _id for _id in conv_parallel_ids) and isinstance(
-            module, torch.nn.Conv1d
-        ):
-            _set_module(
-                module_name,
-                model,
-                shardedConv1D(module),
-            )
-        elif any(name in _id for _id in conv_parallel_ids) and isinstance(
-            module, torch.nn.Conv2d
-        ):
-            _set_module(
-                module_name,
-                model,
-                shardedConv2D(module),
-            )
+    model = _convert_to_sharded_module_recursive(
+        model,
+        embed_parallel_ids,
+        row_parallel_ids,
+        col_parallel_ids,
+        seq_parallel_ids,
+        conv_parallel_ids,
+    )
 
     for name, param in model.named_parameters():
-        mode = 0 
-        if any(
-            module_name in _id for _id in embed_parallel_ids
-        ):
+        mode = 0
+        if any(name in _id for _id in embed_parallel_ids):
             mode = 3
-        elif any(
-            module_name in _id for _id in row_parallel_ids
-        ):
+        elif any(name in _id for _id in row_parallel_ids):
             mode = 1
-        elif any(
-            module_name in _id for _id in col_parallel_ids
-        ):
+        elif any(name in _id for _id in col_parallel_ids):
             mode = 2
 
         weight_filename = metadata["weight_map"][name]
@@ -488,25 +516,28 @@ def load_transformers_as_sharded_module(
         with safe_open(
             path.join(weight_location, weight_filename),
             framework="pt",
-            device=local_rank
-        ) as f: 
-            if mode == 0: 
+            device=rank
+        ) as f:
+            if mode == 0:
                 t = f.get_tensor(name)
             else:
                 tensor_slice = f.get_slice(name)
                 dim_out, dim_in = tensor_slice.get_shape()
                 if mode == 1:
                     dim_slice = dim_in // world_size
-                    t = tensor_slice[:, dim_slice * rank:dim_slice * (rank + 1)]
-                elif mode == 2: 
+                    t = tensor_slice[:, dim_slice *
+                                     rank: dim_slice * (rank + 1)]
+                elif mode == 2:
                     dim_slice = dim_out // world_size
-                    t = tensor_slice[dim_slice * rank:dim_slice * (rank + 1), :]
-                elif mode == 3: 
+                    t = tensor_slice[dim_slice *
+                                     rank: dim_slice * (rank + 1), :]
+                elif mode == 3:
                     t = tensor_slice[
-                        model.language_model.model.embed_tokens.min_vocab_num
-                        : model.language_model.model.embed_tokens.max_vocab_num, :]
-        if t.dtype != param.dtype:
-            t = t.to(dtype=param.dtype)  # Convert to the parameter's dtype
-        state_dict[name] = t
-    model.load_state_dict(state_dict, assign=True)
-    return model
+                        model.language_model.model.embed_tokens.min_vocab_num:
+                        model.language_model.model.embed_tokens.max_vocab_num,
+                        :]
+            if t.dtype != param.dtype:
+                t = t.to(dtype=param.dtype)  # Convert to the parameter's dtype
+            state_dict[name] = t
+        model.load_state_dict(state_dict, assign=True)
+        return model

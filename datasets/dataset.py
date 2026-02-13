@@ -1,5 +1,6 @@
 import os
 from torch.utils.data import Dataset
+from typing import Callable, Iterable, Optional
 from ..util.augmentation import Augmentation
 from ..util.imagefile import Image
 

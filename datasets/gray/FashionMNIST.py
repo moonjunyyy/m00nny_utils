@@ -4,8 +4,7 @@ from typing import Callable, Optional
 
 from torch.utils.data import Dataset
 import torchvision
-from torchvision.transforms import transforms
-from PIL import Image 
+
 
 class FashionMNIST(Dataset):
     def __init__(
@@ -18,10 +17,12 @@ class FashionMNIST(Dataset):
     ) -> None:
 
         super().__init__()
-        self.dataset = torchvision.datasets.FashionMNIST(root, train, None, None, download)
+        self.dataset = torchvision.datasets.FashionMNIST(
+            root, train, None, None, download)
         self.transform = transform
         self.target_transform = target_transform
-        self.classes = ["T-shirt/top", "Trouser", "Pullover", 'Dress', "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"]
+        self.classes = ["T-shirt/top", "Trouser", "Pullover", 'Dress',
+                        "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"]
         self.targets = []
         for cls in self.dataset.targets:
             self.targets.append(int(cls))
@@ -33,6 +34,6 @@ class FashionMNIST(Dataset):
         if self.target_transform:
             label = self.target_transform(label)
         return image, label
-        
+
     def __len__(self):
         return len(self.dataset)

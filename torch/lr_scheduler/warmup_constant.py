@@ -5,7 +5,7 @@ class WarmUpConstantScheduler(torch.optim.lr_scheduler.LRScheduler):
     def __init__(self, optimizer, warmup_steps, last_epoch=-1, verbose=False):
         self.warmup_steps = warmup_steps
         self.initial_lrs = None
-        super().__init__(optimizer, last_epoch, verbose)
+        super().__init__(optimizer, last_epoch)
 
     def _initial_step(self):
         if self.initial_lrs is None:
@@ -20,7 +20,8 @@ class WarmUpConstantScheduler(torch.optim.lr_scheduler.LRScheduler):
         ret = []
         if self.last_epoch < self.warmup_steps:
             for i in range(len(self.optimizer.param_groups)):
-                ret.append(self.initial_lrs[i] * self.last_epoch / self.warmup_steps)
+                ret.append(self.initial_lrs[i] *
+                           self.last_epoch / self.warmup_steps)
         else:
             for i in range(len(self.optimizer.param_groups)):
                 ret.append(self.initial_lrs[i])

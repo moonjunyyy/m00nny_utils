@@ -13,7 +13,8 @@ class _Global_Log_Queue_Listener:
 
     def __new__(cls, *args, **kwargs) -> Self:
         if cls.__instance is None:
-            cls.__instance = super(_Global_Log_Queue_Listener, cls).__new__(cls)
+            cls.__instance = super(
+                _Global_Log_Queue_Listener, cls).__new__(cls)
             cls.__instance.GLOBAL_LISTENNER = None
             cls.__instance.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
             cls.__instance.GLOBAL_LISTENING = False

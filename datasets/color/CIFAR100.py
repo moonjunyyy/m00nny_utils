@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 import torchvision
 
 
-class MNIST(Dataset):
+class CIFAR100(Dataset):
     def __init__(
         self,
         root: str,
@@ -16,22 +16,20 @@ class MNIST(Dataset):
         download: bool = False,
     ) -> None:
 
-        super().__init__()
-        self.dataset = torchvision.datasets.MNIST(
+        self.dataset = torchvision.datasets.CIFAR100(
             root, train, None, None, download)
-        self.classes = [str(i) for i in range(10)]
+        self.transform = transform
+        self.target_transform = target_transform
+        self.classes = [i for i in self.dataset.classes]
         self.targets = []
         for cls in self.dataset.targets:
             self.targets.append(int(cls))
-        self.transform = transform
-        self.target_transform = target_transform
 
     def __getitem__(self, index):
         image, label = self.dataset.__getitem__(index)
-        image = image.convert('RGB')
-        if self.transform is not None:
+        if self.transform:
             image = self.transform(image)
-        if self.target_transform is not None:
+        if self.target_transform:
             label = self.target_transform(label)
         return image, label
 

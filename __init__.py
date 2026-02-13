@@ -13,7 +13,8 @@ def __bootstrap__() -> None:
     _log_path = os.environ.get("LIBM00NNY_LOG_PATH", None)
     if _log_path:
         _log_path = os.path.abspath(path=_log_path)
-    log = Log(name="m00nny_utils_init", global_level=_log_level, path=_log_path)
+    log = Log(name="m00nny_utils_init",
+              global_level=_log_level, path=_log_path)
 
     import sys
     import json
@@ -28,7 +29,8 @@ def __bootstrap__() -> None:
     ROOT_DIR: str = os.path.expanduser(
         os.path.abspath(
             os.environ.get(
-                "LIBM00NNY_ROOT_DIR", os.path.join(os.path.expanduser("~/.local/"))
+                "LIBM00NNY_ROOT_DIR", os.path.join(
+                    os.path.expanduser("~/.local/"))
             )
         )
     )
@@ -188,7 +190,8 @@ def __bootstrap__() -> None:
                 s=os.path.join(_lib_installation_path, "lib")
             ):
                 with open(
-                    file=os.path.join(_lib_installation_path, "build_info.json"),
+                    file=os.path.join(_lib_installation_path,
+                                      "build_info.json"),
                     mode="r",
                 ) as f:
                     _info = json.load(fp=f)
@@ -241,10 +244,12 @@ def __bootstrap__() -> None:
             log.debug(f"{'CUDA path:':<20}{CUDA_PATH}")
             log.debug(f"{'Libtorch version:':<20}{TORCH_VERSION}")
             log.debug(f"{'Libtorch path:':<20}{LIBTORCH_PATH}")
-            log.debug(f"{'CUDNN info:':<20}{CUDNN_VERSION if USE_CUDNN else None}")
+            log.debug(f"{'CUDNN info:':<20}{
+                      CUDNN_VERSION if USE_CUDNN else None}")
             log.debug(f"{'CUDSS info:':<20}{USE_CUDSS if USE_CUDSS else None}")
             log.debug(
-                f"{'CUSPARSELT info:':<20}{USE_CUSPARSELT if USE_CUSPARSELT else None}"
+                f"{'CUSPARSELT info:':<20}{
+                    USE_CUSPARSELT if USE_CUSPARSELT else None}"
             )
             log.debug(f"{'NCCL info:':<20}{USE_NCCL if USE_NCCL else None}")
             log.debug(f"{'Debug mode:':<20}{'Debug' if DEBUG else 'Release'}")
@@ -286,14 +291,16 @@ rm -rf objdir
 """
             with open(file=os.path.join(CURRENT_DIR, "build.sh"), mode="w") as f:
                 f.write(_command)
-            log.debug(f"Build script is generated at: {CURRENT_DIR}/build.sh\n\n")
+            log.debug(f"Build script is generated at: {
+                      CURRENT_DIR}/build.sh\n\n")
             os.system(command=f"chmod +x {CURRENT_DIR}/build.sh")
             ret = os.system(command=f"bash {CURRENT_DIR}/build.sh")
             shutil.rmtree(path=os.path.join(CURRENT_DIR, "objdir"))
             os.remove(path=os.path.join(CURRENT_DIR, "build.sh"))
             if ret != 0:
                 shutil.rmtree(path=_lib_installation_path)
-                raise RuntimeError(f"Shared library build failed for the module")
+                raise RuntimeError(
+                    f"Shared library build failed for the module")
             with open(
                 file=os.path.join(_lib_installation_path, "build_info.json"), mode="w"
             ) as f:
