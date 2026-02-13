@@ -1,6 +1,6 @@
 import time
+from typing import Iterable, Generator
 from .escape_codes import EscapeCodes
-from typing import Iterable, Generator, Any
 from .formatting import seconds_to_human_readable, count_digits
 
 
@@ -60,7 +60,7 @@ class ProgressBar:
     def init_progress(self) -> None:
         # prefix current/total [progress bar] percentage [elapsed_time (+ elapsed_iter_time) / total_time / descriptions]
         _print_str = (
-            f"{self.prefix}" +
+            f"{self.prefix} " +
             f"{self.current:>{count_digits(number=self.length)}}/" +
             f"{self.length:>{count_digits(number=self.length)}} [" +
             f"{EscapeCodes.TERMINAL_CHAR_COLOR[self.color]}" +
@@ -91,14 +91,14 @@ class ProgressBar:
 
         _print_str = (
             f"\r{EscapeCodes.TERMINAL_CLEAR_LINE}" +
-            f"{self.prefix}" +
+            f"{self.prefix} " +
             f"{self.current:>{count_digits(number=self.length)}}/" +
             f"{self.length:>{count_digits(number=self.length)}} [" +
             f"{EscapeCodes.TERMINAL_CHAR_COLOR[self.color]}" +
             f"{bar}" +
             f"{EscapeCodes.TERMINAL_RESET}" +
             f"] {self.progress * 100:3.2f}% " +
-            f"{seconds_to_human_readable(seconds=self.elapsed_time)} " +
+            f"[{seconds_to_human_readable(seconds=self.elapsed_time)} " +
             f"(+ {seconds_to_human_readable(seconds=self.elapsed_time_per_iter)}) "
         )
         for key, value in self.descriptions.items():

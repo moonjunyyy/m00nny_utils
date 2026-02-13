@@ -17,3 +17,22 @@ __all__ = [
     "SVHN",
     "TinyImageNet",
 ]
+
+
+def get_grayscale_dataset(
+    name,
+    train=True,
+    transform=None,
+    target_transform=None,
+    root="./data",
+    download=True,
+):
+    dataset_class = globals()[name]
+    dataset = dataset_class(
+        root=root,
+        train=True,
+        transform=transform,
+        target_transform=target_transform,
+        download=download,
+    )
+    return dataset

@@ -4,19 +4,20 @@ from typing import Callable, Optional
 
 from torch.utils.data import Dataset
 import torchvision
-from torchvision.transforms import transforms
+
 
 class CIFAR100(Dataset):
     def __init__(
         self,
         root: str,
-        train: bool = True, 
+        train: bool = True,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
         download: bool = False,
     ) -> None:
 
-        self.dataset = torchvision.datasets.CIFAR100(root, train, None, None, download)
+        self.dataset = torchvision.datasets.CIFAR100(
+            root, train, None, None, download)
         self.transform = transform
         self.target_transform = target_transform
         self.classes = [i for i in self.dataset.classes]
@@ -32,6 +33,6 @@ class CIFAR100(Dataset):
         if self.target_transform:
             label = self.target_transform(label)
         return image, label
-    
+
     def __len__(self):
         return len(self.dataset)

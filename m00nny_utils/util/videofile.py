@@ -1,20 +1,19 @@
-import os
 import torch
 import ffmpeg
 import numpy as np
 from ..system.threads import Thread
-from typing import Union, Iterable
+from typing import Union
 from .mediafile import (
     _Media,
     _MediaFile,
     _MediaFileManager,
-    PathLike,
-    MediaStreamRef,
     MediaDecodeRequest,
 )
 
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 1, 3)
-IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 1, 3)
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406],
+                         dtype=np.float32).reshape(1, 1, 1, 3)
+IMAGENET_STD = np.array([0.229, 0.224, 0.225],
+                        dtype=np.float32).reshape(1, 1, 1, 3)
 
 
 class _VideoFile(_MediaFile):
@@ -31,9 +30,12 @@ class _VideoFile(_MediaFile):
         ]
         self.widths = [int(_stream["width"]) for _stream in self.streams]
         self.heights = [int(_stream["height"]) for _stream in self.streams]
-        self.frame_rates = [_stream["r_frame_rate"] for _stream in self.streams]
-        self.nb_frames = [int(_stream["nb_frames"]) for _stream in self.streams]
-        self.duration = [float(_stream["duration"]) for _stream in self.streams]
+        self.frame_rates = [_stream["r_frame_rate"]
+                            for _stream in self.streams]
+        self.nb_frames = [int(_stream["nb_frames"])
+                          for _stream in self.streams]
+        self.duration = [float(_stream["duration"])
+                         for _stream in self.streams]
         self.tags = [_stream.get("tags", {}) for _stream in self.streams]
 
     def decode(

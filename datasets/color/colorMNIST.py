@@ -4,7 +4,7 @@ from typing import Callable, Optional
 
 from torch.utils.data import Dataset
 import torchvision
-from torchvision.transforms import transforms
+
 
 class MNIST(Dataset):
     def __init__(
@@ -17,7 +17,8 @@ class MNIST(Dataset):
     ) -> None:
 
         super().__init__()
-        self.dataset = torchvision.datasets.MNIST(root, train, None, None, download)
+        self.dataset = torchvision.datasets.MNIST(
+            root, train, None, None, download)
         self.classes = [str(i) for i in range(10)]
         self.targets = []
         for cls in self.dataset.targets:
@@ -33,6 +34,6 @@ class MNIST(Dataset):
         if self.target_transform is not None:
             label = self.target_transform(label)
         return image, label
-        
+
     def __len__(self):
         return len(self.dataset)
