@@ -13,6 +13,23 @@ from ..system.log import Log
 log = Log(name="sharded_modules")
 
 
+class MetaDeviceContext:
+    def __enter__(self):
+        self.original_register_parameter = torch.nn.Module.register_parameter
+
+        def register_parameter_meta(module, name, param):
+            if param is not None:
+                param = torch.nn.Parameter(
+                    param.to(device="meta"),
+                    requires_grad=param.requires_grad,)
+            self.original_register_parameter(module, name, param)
+        torch.nn.Module.register_parameter = register_parameter_meta
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        torch.nn.Module.register_parameter = self.original_register_parameter
+
+
 class AllReduce(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, op=dist.ReduceOp.SUM):
@@ -172,7 +189,7 @@ class ShardedLinear(torch.nn.Module):
                         * (self.rank + 1)
                     ]
                 )
-                if self.bias:
+                if self.bias is not None:
                     self.bias = torch.nn.Parameter(
                         linear.bias[
                             self.shard_out_features
@@ -193,7 +210,7 @@ class ShardedLinear(torch.nn.Module):
                         * (self.rank + 1),
                     ]
                 )
-                if self.bias:
+                if self.bias is not None:
                     self.bias = torch.nn.Parameter(linear.bias)
         else:
             self.weight = torch.nn.Parameter(linear.weight)
@@ -470,6 +487,7 @@ def _convert_to_sharded_module_recursive(
 
 
 def load_transformers_as_sharded_module(
+    model,
     model_name_or_path: str,
     embed_parallel_ids: list[str] = [],
     row_parallel_ids: list[str] = [],
@@ -478,8 +496,7 @@ def load_transformers_as_sharded_module(
     conv_parallel_ids: list[str] = [],
     **kwargs,
 ) -> torch.nn.Module:
-    config = AutoConfig.from_pretrained(model_name_or_path, **kwargs)
-    model = AutoModel.from_config(config, device_map="meta")
+    # config = AutoConfig.from_pretrained(model_name_or_path, **kwargs)
     weight_location = snapshot_download(
         repo_id=model_name_or_path
     )
@@ -502,12 +519,21 @@ def load_transformers_as_sharded_module(
 
     for name, param in model.named_parameters():
         mode = 0
-        if any(name in _id for _id in embed_parallel_ids):
+        if any(
+            re.match(_expression, name)
+            for _expression in embed_parallel_ids
+        ):
             mode = 3
-        elif any(name in _id for _id in row_parallel_ids):
-            mode = 1
-        elif any(name in _id for _id in col_parallel_ids):
+        elif any(
+            re.match(_expression, name)
+            for _expression in row_parallel_ids
+        ):
             mode = 2
+        elif any(
+            re.match(_expression, name)
+            for _expression in col_parallel_ids
+        ):
+            mode = 1
 
         weight_filename = metadata["weight_map"][name]
         if weight_filename is None:
@@ -522,22 +548,33 @@ def load_transformers_as_sharded_module(
                 t = f.get_tensor(name)
             else:
                 tensor_slice = f.get_slice(name)
-                dim_out, dim_in = tensor_slice.get_shape()
-                if mode == 1:
-                    dim_slice = dim_in // world_size
-                    t = tensor_slice[:, dim_slice *
-                                     rank: dim_slice * (rank + 1)]
-                elif mode == 2:
-                    dim_slice = dim_out // world_size
-                    t = tensor_slice[dim_slice *
-                                     rank: dim_slice * (rank + 1), :]
-                elif mode == 3:
-                    t = tensor_slice[
-                        model.language_model.model.embed_tokens.min_vocab_num:
-                        model.language_model.model.embed_tokens.max_vocab_num,
-                        :]
-            if t.dtype != param.dtype:
-                t = t.to(dtype=param.dtype)  # Convert to the parameter's dtype
-            state_dict[name] = t
-        model.load_state_dict(state_dict, assign=True)
-        return model
+                dim = tensor_slice.get_shape()
+                if 'weight' in name:
+                    dim_in = dim[1]
+                    dim_out = dim[0]
+                    if mode == 1:
+                        dim_slice = dim_in // world_size
+                        t = tensor_slice[:, dim_slice *
+                                         rank: dim_slice * (rank + 1)]
+                    elif mode == 2:
+                        dim_slice = dim_out // world_size
+                        t = tensor_slice[dim_slice *
+                                         rank: dim_slice * (rank + 1), :]
+                    elif mode == 3:
+                        t = tensor_slice[
+                            model.language_model.model.embed_tokens.min_vocab_num:
+                            model.language_model.model.embed_tokens.max_vocab_num,
+                            :]
+                else:
+                    dim_out = dim[0]
+                    if mode == 1:
+                        t = f.get_tensor(name)
+                    elif mode == 2:
+                        dim_slice = dim_out // world_size
+                        t = tensor_slice[dim_slice *
+                                         rank: dim_slice * (rank + 1)]
+        if t.dtype != param.dtype:
+            t = t.to(dtype=param.dtype)  # Convert to the parameter's dtype
+        state_dict[name] = t
+    model.load_state_dict(state_dict, assign=True)
+    return model
