@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
-from ..torch.parallel.sharded_modules import load_transformers_as_sharded_module
+from ..parallel.sharded_modules import load_transformers_as_sharded_module
 from ..system.log import Log
 from dataclasses import dataclass
 
@@ -83,5 +83,11 @@ class _MetaTrainer:
         self.log = Log(
             name=f"worker_{self.config.local_rank}",
             path=self.config.save_dir,
+            lever=Log.DEBUG,
+            global_level=(
+                Log.INFO if self.config.global_rank == 0 else Log.WARNING
+            ),
+            use_STDOUT=(self.config.global_rank == 0),
+            use_STDERR=False,
         )
         self.device = torch.device(f"cuda:{self.config.local_rank}")
