@@ -8,7 +8,7 @@ import torch.distributed as dist
 from transformers import AutoModel, AutoConfig
 from safetensors import safe_open
 from huggingface_hub import snapshot_download
-from ...system.log import Log
+from ..system.log import Log
 
 log = Log(name="sharded_modules")
 
