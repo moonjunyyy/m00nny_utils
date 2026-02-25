@@ -19,7 +19,7 @@ class _Global_Log_Queue_Listener:
             cls.__instance.GLOBAL_LISTENNER = None
             cls.__instance.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
             cls.__instance.GLOBAL_LISTENING = False
-            cls.__instance.cnt = 0
+            cls.__instance.cnt = mp.Value('i', 0)
         return cls.__instance
 
     def _init_log_queue(
@@ -83,15 +83,15 @@ class _Global_Log_Queue_Listener:
         use_STDOUT: bool = True,
         use_STDERR: bool = False,
     ) -> None:
-        if self.__initialized:
+        self.cnt.value += 1
+        if self.__class__.__initialized:
             return
-        self.GLOBAL_LISTENING = False
-        self.GLOBAL_LISTENNER = None
-        self.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
         self._init_log_queue(
-            level=level, path=path, use_STDOUT=use_STDOUT, use_STDERR=use_STDERR
+            level=level, path=path,
+            use_STDOUT=use_STDOUT,
+            use_STDERR=use_STDERR
         )
-        self.__initialized = True
+        self.__class__.__initialized = True
         return
 
     def get_log_queue(self) -> mp.Queue:
@@ -106,7 +106,6 @@ class _Global_Log_Queue_Listener:
             self.GLOBAL_LISTENNER.stop()
             self.GLOBAL_LISTENING = False
             self.GLOBAL_LISTENNER = None
-            self.cnt -= 1
         else:
             print("ERROR: Listener is not running!")
 
@@ -118,21 +117,34 @@ class _Global_Log_Queue_Listener:
 
 
 class Log:
-    def get_level(self, level: str) -> int:
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+    def get_level(self, level: Union[int, str]) -> int:
         if isinstance(level, int):
             return level
-        if isinstance(level, str):
-            if level.upper() == "DEBUG":
+        elif isinstance(level, str):
+            level = level.upper()
+            if level == "DEBUG":
                 return logging.DEBUG
-            if level.upper() == "INFO":
+            elif level == "INFO":
                 return logging.INFO
-            if level.upper() == "WARNING":
+            elif level == "WARNING":
                 return logging.WARNING
-            if level.upper() == "ERROR":
+            elif level == "ERROR":
                 return logging.ERROR
-            if level.upper() == "CRITICAL":
+            elif level == "CRITICAL":
                 return logging.CRITICAL
-        return logging.INFO
+            else:
+                raise ValueError(f"Invalid log level: {level}")
+        else:
+            raise TypeError(
+                "Invalid type for log level:"
+                f"{type(level)}. Expected int or str."
+            )
 
     def __init__(
         self,
@@ -185,3 +197,6 @@ class Log:
 
     def stderr(self, message: str) -> None:
         print(message, file=sys.stderr)
+
+
+_log_queue_listener = _Global_Log_Queue_Listener()

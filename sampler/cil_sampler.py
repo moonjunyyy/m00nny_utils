@@ -17,6 +17,7 @@ class CILSampler:
         self.shuffle = shuffle
         self.rnd_seed = seed
         self.task_id = None
+        self.epoch = 0
 
         self.num_replicas = num_replicas
         self.rank = rank
@@ -64,13 +65,14 @@ class CILSampler:
         return selected_classes
 
     def __iter__(self):
+        self.epoch += 1
         if self.shuffle:
             perm = torch.randperm(
                 len(self.indices),
                 generator=torch.Generator().manual_seed(
-                    self.rnd_seed + self.task_id
+                    (self.rnd_seed * self.epoch + self.task_id) % (2 ** 32)
                     if self.task_id is not None
-                    else self.rnd_seed
+                    else (self.rnd_seed + self.epoch) % (2 ** 32)
                 ))
             shuffled_indices = [self.indices[i] for i in perm]
             return iter(shuffled_indices)
