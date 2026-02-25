@@ -100,5 +100,5 @@ class _VideoFileManager(_MediaFileManager):
     managed_class = _VideoFile
 
 
-class VideoFile(_Media):
+class Video(_Media):
     _manager_class = _VideoFileManager

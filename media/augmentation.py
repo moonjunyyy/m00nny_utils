@@ -157,11 +157,11 @@ class UniformTemporalSubFrame(Augmentation):
         if not total_frames:
             return stream  # Cannot subsample if frame count is unknown
         step = max(total_frames // self.num_samples, 1)
-        select_expr = "+".join(f"eq(n\\,{i})" for i in range(0,
-                                                             total_frames, step)[:self.num_samples])
+        select_expr = "+".join(f"eq(n\\,{i})"
+                               for i in range(0, total_frames, step)[:self.num_samples])
         meta["nb_frames"] = min(self.num_samples, total_frames)
-        meta["frame_rate"] = meta["frame_rate"] *
-        (meta["nb_frames"] / total_frames)
+        meta["frame_rate"] = meta["frame_rate"] * \
+            (meta["nb_frames"] / total_frames)
         return stream.filter("select", select_expr).filter("setpts", "N/(FRAME_RATE*TB)"), meta
 
 
@@ -220,6 +220,6 @@ class UniformAudioSubsample(Augmentation):
         select_expr = "+".join(f"eq(n\\,{int(i * step)
                                          })" for i in range(self.target_nb_samples))
         meta["nb_samples"] = self.target_nb_samples
-        meta["sample_rate"] = meta["sample_rate"] *
-        (self.target_nb_samples / total_samples)
+        meta["sample_rate"] = meta["sample_rate"] * \
+            (self.target_nb_samples / total_samples)
         return stream.filter("aselect", select_expr).filter("asetpts", "N/SR/TB"), meta
