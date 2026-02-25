@@ -3,7 +3,10 @@ import torch.nn.functional as F
 
 
 def generate_perlin_noise(
-    shape, *, iterations=0, device='cpu'
+    shape, *,
+    iterations=0,
+    device='cpu',
+    dtype=torch.float32
 ):
     width = shape[-1]
     height = shape[-2]
@@ -12,8 +15,8 @@ def generate_perlin_noise(
     for dim in remaining_dims:
         nvecs *= dim
 
-    _seed = torch.randn(nvecs, 2, height, width, device=device)
-    _noise = torch.zeros(nvecs, height, width, device=device)
+    _seed = torch.randn(nvecs, 2, height, width, device=device, dtype=dtype)
+    _noise = torch.zeros(nvecs, height, width, device=device, dtype=dtype)
     _buffer = torch.zeros(
         nvecs,
         height // 2,
@@ -60,4 +63,6 @@ def generate_perlin_noise(
     if _n > 1:
         _noise = _noise / _n
 
+    _noise = _noise - _noise.mean(dim=[-2, -1], keepdim=True)
+    _noise = _noise / (_noise.std(dim=[-2, -1], keepdim=True) + 1e-8)
     return _noise.reshape(*remaining_dims, height, width)

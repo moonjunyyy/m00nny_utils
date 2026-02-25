@@ -37,7 +37,6 @@ def _build_batch(
 
 
 class _PrefetchWorker:
-
     def __init__(
         self,
         dataset,

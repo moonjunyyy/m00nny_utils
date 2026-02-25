@@ -507,7 +507,7 @@ class RainbowPromptHandler(_MetaPEFTHandler):
         D1: int = None,
         D2: int = None,
         relation_type: int = None,
-        self_attn_idx:  int = None,
+        **kwargs,
     ):
         super().__init__(module)
         self.prompts = nn.ModuleList()
@@ -532,7 +532,7 @@ class RainbowPromptHandler(_MetaPEFTHandler):
                     D1=D1,
                     D2=D2,
                     relation_type=relation_type,
-                    self_attn=_n in self_attn_idx,
+                    self_attn=_n in prefix_tune_idx,
                 )
                 self.prompts.append(_layer_handler)
 
@@ -552,6 +552,26 @@ class RainbowPromptHandler(_MetaPEFTHandler):
         for prompt in self.prompts:
             prompt.unset_warm_up()
 
+    def before_task(self, task_id):
+        for prompt in self.prompts:
+            prompt.task_id = task_id
+
+    def after_task(self, task_id):
+        if task_id == 0:
+            for name, param in self.module.named_parameters():
+                if 'head' not in name:
+                    param.requires_grad = False
+
+    def before_epoch(self, epoch):
+        if epoch == 0:
+            for prompt in self.prompts:
+                prompt.set_warm_up()
+
+    def after_epoch(self, epoch):
+        if epoch == 0:
+            for prompt in self.prompts:
+                prompt.unset_warm_up()
+
     @property
     def task_id(self):
         return self._task_id
@@ -562,17 +582,17 @@ class RainbowPromptHandler(_MetaPEFTHandler):
         for prompt in self.prompts:
             prompt.task_id = self._task_id
 
-    @ property
+    @property
     def query_embed(self):
         return self._query_embed
 
-    @ query_embed.setter
+    @query_embed.setter
     def query_embed(self, value):
         self._query_embed = value
         for prompt in self.prompts:
             prompt.query_embed = self._query_embed
 
-    @ property
+    @property
     def similarity(self):
         sim = 0
         for prompt in self.prompts:
