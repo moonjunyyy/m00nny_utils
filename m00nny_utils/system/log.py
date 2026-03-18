@@ -10,7 +10,6 @@ import multiprocessing as mp
 
 class _Global_Log_Queue_Listener:
     __instance = None
-    __initialized = False
 
     def __new__(cls, *args, **kwargs) -> Self:
         if cls.__instance is None:
@@ -19,7 +18,7 @@ class _Global_Log_Queue_Listener:
             cls.__instance.GLOBAL_LISTENNER = None
             cls.__instance.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
             cls.__instance.GLOBAL_LISTENING = False
-            cls.__instance.cnt = mp.Value('i', 0)
+            cls.__instance.__initialized = False
         return cls.__instance
 
     def _init_log_queue(
@@ -73,7 +72,7 @@ class _Global_Log_Queue_Listener:
             # thread (which otherwise dies with "Exception in thread ... (_monitor)" at every exit).
             atexit.register(self._stop_at_exit)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}", flush=True)
             return None
 
     def __init__(
@@ -83,15 +82,14 @@ class _Global_Log_Queue_Listener:
         use_STDOUT: bool = True,
         use_STDERR: bool = False,
     ) -> None:
-        self.cnt.value += 1
-        if self.__class__.__initialized:
+        if self.__initialized:
             return
         self._init_log_queue(
             level=level, path=path,
             use_STDOUT=use_STDOUT,
             use_STDERR=use_STDERR
         )
-        self.__class__.__initialized = True
+        self.__initialized = True
         return
 
     def get_log_queue(self) -> mp.Queue:
@@ -157,9 +155,11 @@ class Log:
     ) -> None:
         level = self.get_level(level=level)
         global_level = self.get_level(level=global_level)
-
         self.listener = _Global_Log_Queue_Listener(
-            level=global_level, path=path, use_STDOUT=use_STDOUT, use_STDERR=use_STDERR
+            level=global_level,
+            path=path,
+            use_STDOUT=use_STDOUT,
+            use_STDERR=use_STDERR
         )
         self.level = level
         self.logger = self.get_logger(name=name, level=level)
@@ -193,10 +193,7 @@ class Log:
         self.logger.critical(msg=message)
 
     def stdout(self, message: str) -> None:
-        print(message, file=self.logger)
+        print(message)
 
     def stderr(self, message: str) -> None:
         print(message, file=sys.stderr)
-
-
-_log_queue_listener = _Global_Log_Queue_Listener()

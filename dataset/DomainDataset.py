@@ -1,19 +1,23 @@
 import torch
 import os
 from typing import List
-from .dataset import _MetaDataset as _MetaDataset
+from .dataset import DatasetBase as DatasetBase
 
-class _SubDomainDataset(_MetaDataset):pass
 
-class DomainDataset(_MetaDataset):
+class _SubDomainDataset(DatasetBase):
+    pass
+
+
+class DomainDataset(DatasetBase):
     """
     A base class for domain datasets.
     """
+
     def __init__(
         self,
         root: str,
-        transform = None,
-        target_transform = None,
+        transform=None,
+        target_transform=None,
     ) -> None:
         super().__init__(root, transform, target_transform)
         self.domains = []

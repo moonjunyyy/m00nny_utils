@@ -2,7 +2,7 @@ import torch
 import ffmpeg
 import numpy as np
 from typing import Union, Iterable
-from ..system.threads import Thread
+from ..system.task_pool import Task
 from .mediafile import (
     _Media,
     _MediaFile,
@@ -19,7 +19,7 @@ class _AudioFile(_MediaFile):
         filename: PathLike,
     ):
         super().__init__(filename)
-        self._metadata = Thread(target=self._initialize_streams, daemon=True)
+        self._metadata = Task(target=self._initialize_streams, daemon=True)
         self._metadata.start()
 
     def _initialize_streams(self):
@@ -30,9 +30,12 @@ class _AudioFile(_MediaFile):
         ]
         self.formats = [_stream["codec_name"] for _stream in self.streams]
         self.channels = [int(_stream["channels"]) for _stream in self.streams]
-        self.sample_rate = [int(_stream["sample_rate"]) for _stream in self.streams]
-        self.duration = [float(_stream["duration"]) for _stream in self.streams]
-        self.nb_samples = [int(_stream["nb_frames"]) for _stream in self.streams]
+        self.sample_rate = [int(_stream["sample_rate"])
+                            for _stream in self.streams]
+        self.duration = [float(_stream["duration"])
+                         for _stream in self.streams]
+        self.nb_samples = [int(_stream["nb_frames"])
+                           for _stream in self.streams]
         self.tags = [_stream.get("tags", {}) for _stream in self.streams]
 
     def get_streams(self) -> Iterable[MediaStreamRef]:

@@ -4,7 +4,7 @@ import ffmpeg
 import numpy as np
 from typing import Union, Iterable, Optional, Tuple
 from .augmentation import Augmentation
-from ..system.threads import Thread
+from ..system.task_pool import Task
 from .mediafile import (
     _Media,
     _MediaFile,
@@ -16,15 +16,17 @@ from .mediafile import (
     MediaDecodeRequest,
 )
 
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 1, 3)
-IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 1, 3)
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406],
+                         dtype=np.float32).reshape(1, 1, 1, 3)
+IMAGENET_STD = np.array([0.229, 0.224, 0.225],
+                        dtype=np.float32).reshape(1, 1, 1, 3)
 
 
 class _ImageFile(_MediaFile):
     def __init__(self, filename):
         super().__init__(filename)
         # Get a single image stream info
-        self._metadata = Thread(target=self._initialize_streams, daemon=True)
+        self._metadata = Task(target=self._initialize_streams, daemon=True)
         self._metadata.start()
 
     def _initialize_streams(self):
@@ -47,9 +49,9 @@ class _ImageFile(_MediaFile):
         ffmpeg_stream = ffmpeg.input(self.filename)
         augments = request.aug_policy if request.aug_policy else None
         meta_data = {
-                    "width": self.widths[stream_idx],
-                    "height": self.heights[stream_idx],
-                }
+            "width": self.widths[stream_idx],
+            "height": self.heights[stream_idx],
+        }
         if augments:
             ffmpeg_stream, meta_data = augments.apply(
                 ffmpeg_stream,
@@ -89,6 +91,7 @@ class _ImageFile(_MediaFile):
 
 class _ImageFileManager(_MediaFileManager):
     _managed_class = _ImageFile
+
 
 class Image(_Media):
     _manager_class = _ImageFileManager
