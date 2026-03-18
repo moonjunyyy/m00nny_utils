@@ -1,7 +1,7 @@
 import torch
 import ffmpeg
 import numpy as np
-from ..system.threads import Thread
+from ..system.task_pool import Task
 from typing import Union
 from .mediafile import (
     _Media,
@@ -19,7 +19,7 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225],
 class _VideoFile(_MediaFile):
     def __init__(self, filename):
         super().__init__(filename)
-        self._metadata = Thread(target=self._initialize_streams, daemon=True)
+        self._metadata = Task(target=self._initialize_streams, daemon=True)
         self._metadata.start()
 
     def _initialize_streams(self):
@@ -97,7 +97,7 @@ class _VideoFile(_MediaFile):
 
 
 class _VideoFileManager(_MediaFileManager):
-    managed_class = _VideoFile
+    _managed_class = _VideoFile
 
 
 class Video(_Media):

@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from typing import Generator, TypeVar, List
-from .threads import Thread, Lock, RLock, Event, Condition
+from .task_pool import Task, Lock, RLock, Event, Condition
 from ..util.formatting import bytes_to_human_readable
 from ..system.log import Log
 
@@ -157,7 +157,7 @@ class PathNode:
                 with self.children_lock:
                     for _child in self.children:
                         _th_list.append(
-                            Thread(target=_child.mv, args=(_subnode,), daemon=True))
+                            Task(target=_child.mv, args=(_subnode,), daemon=True))
                 for _th in _th_list:
                     _th.start()
                 for _th in _th_list:
@@ -186,7 +186,7 @@ class PathNode:
                 _th_list = []
                 with self.children_lock:
                     for _child in self.children:
-                        _th_list.append(Thread(target=_child.rm, daemon=True))
+                        _th_list.append(Task(target=_child.rm, daemon=True))
                 for _th in _th_list:
                     _th.start()
                 for _th in _th_list:
@@ -213,7 +213,7 @@ class PathNode:
         with self.children_lock:
             for _child in self.children:
                 if _child.type == PathNode.Type.DIRECTORY:
-                    _th_list.append(Thread(target=_child.find,
+                    _th_list.append(Task(target=_child.find,
                                     args=(pattern,), daemon=True))
         for _th in _th_list:
             _th.start()
@@ -237,8 +237,8 @@ class PathNode:
             _th_list = []
             for _item in _lsdir:
                 _node = PathNode.__new__(PathNode)
-                _th = Thread(target=_node.__init__,
-                             args=(_item, self), daemon=True)
+                _th = Task(target=_node.__init__,
+                           args=(_item, self), daemon=True)
                 _th_list.append(_th)
                 self.children.append(_node)
             for _th in _th_list:

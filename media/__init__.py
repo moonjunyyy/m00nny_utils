@@ -1,10 +1,11 @@
 from .videofile import Video
 from .audiofile import Audio
-from .augmentation import (
-    Augmentation,
-    Compose,
-    Resize,
-    Resample,
-    UniformTemporalSubFrame,
-    RandomAudioGain
-)
+from .imagefile import Image
+from . import augmentation
+
+__all__ = [
+    "Video",
+    "Audio",
+    "Image",
+    "augmentation",
+]

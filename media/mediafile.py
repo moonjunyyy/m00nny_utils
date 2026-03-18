@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 from enum import Enum
-from ..system.threads import Lock
+from ..system.task_pool import Task, Lock
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple, Iterable
 from .augmentation import Augmentation
@@ -42,6 +42,7 @@ class MediaDecodeRequest:
     normalize: Optional[Tuple[float, float]] = None
     aug_policy: Optional[Augmentation] = None
 
+
 _np_dtype_map = {
     MediaFileDataType.Int8: np.int8,
     MediaFileDataType.Int16: np.int16,
@@ -58,6 +59,7 @@ _torch_dtype_map = {
     MediaFileDataType.Float32: torch.float32,
     MediaFileDataType.Float64: torch.float64,
 }
+
 
 class _MediaFile:
     def __init__(
