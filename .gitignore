@@ -2,10 +2,21 @@
 *.log
 *.err
 *.out
-release/**
-debug/**
+release/
+debug/
 **/.hash
 **/__pycache__/**
 **/.vscode/**
 **/objdir*/**
 **/third_party/**
+.venv/
+build/
+dist/
+*.egg-info/
+# CMake run in place (the import-time build itself runs in release/ or debug/)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+/Makefile
+/m00nny_utils/Makefile
+.DS_Store
