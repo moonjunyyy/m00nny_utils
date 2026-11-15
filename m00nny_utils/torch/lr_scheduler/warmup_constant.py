@@ -21,11 +21,7 @@ class WarmUpConstantScheduler(torch.optim.lr_scheduler.LRScheduler):
         if self.last_epoch < self.warmup_steps:
             for i in range(len(self.optimizer.param_groups)):
                 ret.append(self.initial_lrs[i] *
-<<<<<<<< HEAD:lr_scheduler/warmup_constant.py
-                           (self.last_epoch+1) / (self.warmup_steps+1))
-========
                            self.last_epoch / self.warmup_steps)
->>>>>>>> 32a9d85e8239958802bc0613ad0529c67523d0bb:m00nny_utils/torch/lr_scheduler/warmup_constant.py
         else:
             for i in range(len(self.optimizer.param_groups)):
                 ret.append(self.initial_lrs[i])

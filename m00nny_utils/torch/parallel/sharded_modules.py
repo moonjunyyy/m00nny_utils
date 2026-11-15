@@ -1,19 +1,13 @@
-<<<<<<<< HEAD:parallel/sharded_modules.py
-========
 import re
 import json
 from os import path
->>>>>>>> 32a9d85e8239958802bc0613ad0529c67523d0bb:m00nny_utils/torch/parallel/sharded_modules.py
 from typing import Tuple
 
 import torch
 import torch.distributed as dist
-<<<<<<<< HEAD:parallel/sharded_modules.py
-========
 from transformers import AutoModel, AutoConfig
 from safetensors import safe_open
 from huggingface_hub import snapshot_download
->>>>>>>> 32a9d85e8239958802bc0613ad0529c67523d0bb:m00nny_utils/torch/parallel/sharded_modules.py
 from ..system.log import Log
 
 log = Log(name="sharded_modules")
@@ -371,8 +365,6 @@ class ShardedConv2D(torch.nn.Module):
         if self.shard_out_channels is not None:
             output = torch.cat(all_gather(output), dim=1)
         return output
-<<<<<<<< HEAD:parallel/sharded_modules.py
-========
 
 
 def _set_module(name: str, module: torch.nn.Module, new_module: torch.nn.Module):
@@ -549,4 +541,3 @@ def load_transformers_as_sharded_module(
             state_dict[name] = t
         model.load_state_dict(state_dict, assign=True)
         return model
->>>>>>>> 32a9d85e8239958802bc0613ad0529c67523d0bb:m00nny_utils/torch/parallel/sharded_modules.py
