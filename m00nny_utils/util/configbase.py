@@ -151,11 +151,14 @@ class ConfigBase:
         return self._config_groups.get(group_name, None)
 
     def del_group(self, group_name):
-        if group_name in self._config_groups:
-            del self._config_groups[group_name]
+        _group = self._config_groups.pop(group_name, None)
+        if _group is not None:
+            for _action in list(_group.group._group_actions):
+                _group._remove(_action)
+            self.parser._action_groups.remove(_group.group)
 
-    def parse_args(self):
-        parsed = vars(self.parser.parse_args())
+    def parse_args(self, args=None):
+        parsed = vars(self.parser.parse_args(args))
         ret = {}
         for _dest, _val in parsed.items():
             _cur = ret
@@ -194,7 +197,11 @@ class _Config_Group_Action_Base(argparse.Action):
         values,
         option_string=None
     ):
-        setattr(namespace, self.dest, values)
+        # a flag (nargs=0) arrives with values=[]: it stores its const
+        setattr(
+            namespace, self.dest,
+            self.const if self.nargs == 0 else values
+        )
 
 
 class _Config_Group:
@@ -214,7 +221,10 @@ class _Config_Group:
     ):
         if isinstance(option_strings, str):
             option_strings = [option_strings]
-        _dest = None
+        # an explicit dest is kept, under the group prefix
+        _dest = kwargs.pop("dest", None)
+        if _dest is not None:
+            _dest = f"{self.prefix}.{_dest}".lstrip(".")
         _metavar = kwargs.pop("metavar", None)
         _action = kwargs.get("action", None)
         _option_strings = []
@@ -222,13 +232,14 @@ class _Config_Group:
         for _option in option_strings:
             _flag = _option.lstrip("-")
             if _dest is None:
-                _dest = f"{self.prefix}.{_flag.replace('-', '_')}"
-                _dest = _dest.lstrip(".")
+                _dest = _flag.replace('-', '_')
+                # "--no-x" of a store_false flag stores into "x"
+                if _action == "store_false" and _dest.startswith("no_"):
+                    _dest = _dest[len("no_"):]
+                _dest = f"{self.prefix}.{_dest}".lstrip(".")
             if _action in ["store_true", "store_false"]:
                 if _metavar is None:
                     _metavar = ""
-                if _dest is not None:
-                    _dest = _dest.replace("no_", "")
                 kwargs["nargs"] = 0
                 kwargs["const"] = True if _action == "store_true" else False
                 kwargs["default"] = False if _action == "store_true" else True
@@ -247,10 +258,17 @@ class _Config_Group:
 
     def del_argument(self, dest):
         _dest = f"{self.prefix}.{dest}" if self.prefix else dest
-        self.group._group_actions = [
+        for _action in [
             action for action in self.group._group_actions
-            if action.dest != _dest
-        ]
+            if action.dest == _dest
+        ]:
+            self._remove(_action)
+
+    def _remove(self, action):
+        # off the parser too: its options and its default go with it
+        self.group._remove_action(action)
+        for _option in action.option_strings:
+            self.parser._option_string_actions.pop(_option, None)
 
 
 if __name__ == "__main__":

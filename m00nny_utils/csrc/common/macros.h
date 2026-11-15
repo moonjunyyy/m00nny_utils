@@ -49,6 +49,20 @@ struct LibM00nnyGILScope
 #define ExitGILScope }
 
 /*
+The GIL released for a scope (RAII), by the thread that holds it, around work that touches no Python object
+(reading a file, tensor arithmetic): other Python threads run meanwhile. Taken back when the scope ends, also
+when an exception leaves it.
+*/
+struct LibM00nnyNoGILScope
+{
+    PyThreadState* state;
+    LibM00nnyNoGILScope() : state(PyEval_SaveThread()) {}
+    ~LibM00nnyNoGILScope() { PyEval_RestoreThread(this->state); }
+    LibM00nnyNoGILScope(const LibM00nnyNoGILScope&) = delete;
+    LibM00nnyNoGILScope& operator=(const LibM00nnyNoGILScope&) = delete;
+};
+
+/*
 A module of this library: PyModule_Create and, on a free-threaded CPython, the declaration that the module runs
 without the GIL (without it, importing the library turns the GIL back on for the whole process).
 The functions keep no shared mutable state. An object (KMeans, TSNE) is not synchronized: use one object from one
