@@ -1,6 +1,8 @@
 import os
 import time
 import random
+import inspect
+import importlib
 from typing import Tuple
 
 import numpy as np
@@ -23,6 +25,52 @@ def get_dataset(
     pass
 
 
+# Short names `name` may be given as, beyond the class names of torch.optim
+# and torch.optim.lr_scheduler. A value is a class or its dotted import path;
+# a project adds its own the same way.
+_ROOT = __package__.rpartition(".")[0]
+OPTIMIZERS = {}
+SCHEDULERS = {
+    "cosine": f"{_ROOT}.lr_scheduler.warmup_cosine_anneling"
+              ".WarmUpCosineAnnelingScheduler",
+    "constant": f"{_ROOT}.lr_scheduler.warmup_constant"
+                ".WarmUpConstantScheduler",
+}
+
+
+def _resolve(name, table, namespace, base, suffix=""):
+    """The class `name` stands for, or None.
+
+    `name` is a class, a key of `table`, the name of a subclass of `base` in
+    `namespace` (case ignored, `suffix` optional: "step" is StepLR), or a
+    dotted import path.
+    """
+    if isinstance(name, type):
+        return name
+    _key = name.lower()
+    _found = table.get(_key)
+    if _found is None:
+        _classes = {
+            _attr.lower(): _obj for _attr, _obj in vars(namespace).items()
+            if isinstance(_obj, type) and issubclass(_obj, base)
+            and _obj is not base and not _attr.startswith("_")
+        }
+        _found = _classes.get(_key, _classes.get(_key + suffix))
+    if _found is None and "." in name:
+        _found = name
+    if isinstance(_found, str):
+        _module, _, _attr = _found.rpartition(".")
+        _found = getattr(importlib.import_module(_module), _attr)
+    return _found
+
+
+def _accepted(target, options):
+    """The entries of `options` that `target` takes by name, its first
+    (positional) argument aside."""
+    _names = list(inspect.signature(target).parameters)[1:]
+    return {_k: _v for _k, _v in options.items() if _k in _names}
+
+
 def get_optimizer(
         parameters,
         *,
@@ -35,40 +83,25 @@ def get_optimizer(
         betas: Tuple[float, float] = (0.9, 0.999),
         **kwargs
 ):
-    if name.lower() == "adamw":
-        return torch.optim.AdamW(
-            parameters,
-            lr=lr,
-            betas=betas,
-            weight_decay=weight_decay,
-        )
-    elif name.lower() == "adam":
-        return torch.optim.Adam(
-            parameters,
-            lr=lr,
-            betas=betas,
-            weight_decay=weight_decay,
-        )
-    elif name.lower() == "rmsprop":
-        return torch.optim.RMSprop(
-            parameters,
-            lr=lr,
-            momentum=momentum,
-            weight_decay=weight_decay,
-            dampening=dampening,
-            nesterov=nesterov,
-        )
-    elif name.lower() == "sgd":
-        return torch.optim.SGD(
-            parameters,
-            lr=lr,
-            momentum=momentum,
-            weight_decay=weight_decay,
-            dampening=dampening,
-            nesterov=nesterov,
-        )
-    else:
+    _optimizer = _resolve(
+        name, OPTIMIZERS, torch.optim, torch.optim.Optimizer
+    )
+    if _optimizer is None:
         raise ValueError(f"Unsupported optimizer: {name}")
+    # each optimizer gets the options it takes: Adam has no momentum,
+    # RMSprop no dampening
+    return _optimizer(
+        parameters,
+        **_accepted(_optimizer, dict(
+            kwargs,
+            lr=lr,
+            momentum=momentum,
+            dampening=dampening,
+            weight_decay=weight_decay,
+            nesterov=nesterov,
+            betas=betas,
+        ))
+    )
 
 
 def get_scheduler(
@@ -81,26 +114,22 @@ def get_scheduler(
     step_size: int = 10,
     **kwargs
 ):
-    if name.lower() == "step":
-        return torch.optim.name.StepLR(
-            target_optimizer, step_size=step_size, gamma=gamma
-        )
-    elif name.lower() == "exponential":
-        return torch.optim.name.ExponentialLR
-    elif name.lower() == "cosine":
-        from ..lr_scheduler.warmup_cosine_anneling \
-            import WarmUpCosineAnnelingScheduler
-        return WarmUpCosineAnnelingScheduler(
-            target_optimizer, warmup_steps=warmup_steps, total_steps=total_steps
-        )
-        return WarmUpCosineAnnelingScheduler
-    elif name.lower() == "constant":
-        from ..lr_scheduler.warmup_constant import WarmUpConstantScheduler
-        return WarmUpConstantScheduler(
-            target_optimizer, warmup_steps=warmup_steps
-        )
-    else:
+    _scheduler = _resolve(
+        name, SCHEDULERS, torch.optim.lr_scheduler,
+        torch.optim.lr_scheduler.LRScheduler, suffix="lr"
+    )
+    if _scheduler is None:
         raise ValueError(f"Unsupported scheduler: {name}")
+    return _scheduler(
+        target_optimizer,
+        **_accepted(_scheduler, dict(
+            kwargs,
+            warmup_steps=warmup_steps,
+            total_steps=total_steps,
+            gamma=gamma,
+            step_size=step_size,
+        ))
+    )
 
 
 class RuntimeBase:
@@ -125,7 +154,8 @@ class RuntimeBase:
         self.epochs = epochs
         self.batchsize = batchsize
         self.device = device
-        self.dtype = dtype
+        # the config passes the dtype by name ("float32", "bfloat16")
+        self.dtype = getattr(torch, dtype) if isinstance(dtype, str) else dtype
         self.random_seed = random_seed
         self.num_workers = num_workers
         self.save_path = save_path
@@ -154,7 +184,9 @@ class RuntimeBase:
         )
         time.sleep(0.1 * _l_rank)  # Stagger the initialization
 
-        _dist_url = self.dist_config.get("url", "tcp://")
+        # the config names it "protocol"; "url" is the earlier key
+        _dist_url = self.dist_config.get(
+            "protocol", self.dist_config.get("url", "tcp://"))
         _master_addr = self.dist_config.get("master_addr", "localhost")
         _master_port = self.dist_config.get("master_port", "29500")
         _dist_url = f"{_dist_url}{_master_addr}:{_master_port}"
@@ -176,10 +208,10 @@ class RuntimeBase:
         def print(*args, **kwargs):
             force = kwargs.pop('force', False)
             if is_master or force:
-                self.log(
+                self.log.info(
                     "\n".join(
                         map(str, args)
-                    ), level=Log.INFO
+                    )
                 )
         __builtin__.print = print
 
