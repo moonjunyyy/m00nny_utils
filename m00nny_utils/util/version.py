@@ -3,9 +3,13 @@ from typing import overload
 
 class Version:
     @overload
-    def __init__(self, version: str) -> None: ...
+    def __init__(
+        self, version: str) -> None: ...
+
     @overload
-    def __init__(self, major: int, minor: int = None, patch: int = None) -> None: ...
+    def __init__(
+        self, major: int, minor: int = None, patch: int = None
+    ) -> None: ...
 
     def __init__(self, *args) -> None:
         self.major = 0
@@ -45,7 +49,8 @@ class Version:
         elif isinstance(other, Version):
             _version_of_other = other
         else:
-            raise ValueError(f"Invalid comparison type {type(other)} for Version")
+            raise ValueError(
+                f"Invalid comparison type {type(other)} for Version")
         if _version_of_other.major != self.major:
             return False
         if (
@@ -68,7 +73,8 @@ class Version:
         elif isinstance(other, Version):
             _version_of_other = other
         else:
-            raise ValueError(f"Invalid comparison type {type(other)} for Version")
+            raise ValueError(
+                f"Invalid comparison type {type(other)} for Version")
         if self.major > _version_of_other.major:
             return True
         if self.major < _version_of_other.major:
@@ -91,7 +97,8 @@ class Version:
         elif isinstance(other, Version):
             _version_of_other = other
         else:
-            raise ValueError(f"Invalid comparison type {type(other)} for Version")
+            raise ValueError(
+                f"Invalid comparison type {type(other)} for Version")
         if self.major < _version_of_other.major:
             return True
         if self.major > _version_of_other.major:

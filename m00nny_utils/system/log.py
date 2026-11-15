@@ -10,15 +10,15 @@ import multiprocessing as mp
 
 class _Global_Log_Queue_Listener:
     __instance = None
-    __initialized = False
 
     def __new__(cls, *args, **kwargs) -> Self:
         if cls.__instance is None:
-            cls.__instance = super(_Global_Log_Queue_Listener, cls).__new__(cls)
+            cls.__instance = super(
+                _Global_Log_Queue_Listener, cls).__new__(cls)
             cls.__instance.GLOBAL_LISTENNER = None
             cls.__instance.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
             cls.__instance.GLOBAL_LISTENING = False
-            cls.__instance.cnt = 0
+            cls.__instance.__initialized = False
         return cls.__instance
 
     def _init_log_queue(
@@ -72,7 +72,7 @@ class _Global_Log_Queue_Listener:
             # thread (which otherwise dies with "Exception in thread ... (_monitor)" at every exit).
             atexit.register(self._stop_at_exit)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}", flush=True)
             return None
 
     def __init__(
@@ -84,11 +84,10 @@ class _Global_Log_Queue_Listener:
     ) -> None:
         if self.__initialized:
             return
-        self.GLOBAL_LISTENING = False
-        self.GLOBAL_LISTENNER = None
-        self.GLOBAL_LOG_QUEUE = mp.Queue(maxsize=-1)
         self._init_log_queue(
-            level=level, path=path, use_STDOUT=use_STDOUT, use_STDERR=use_STDERR
+            level=level, path=path,
+            use_STDOUT=use_STDOUT,
+            use_STDERR=use_STDERR
         )
         self.__initialized = True
         return
@@ -105,7 +104,6 @@ class _Global_Log_Queue_Listener:
             self.GLOBAL_LISTENNER.stop()
             self.GLOBAL_LISTENING = False
             self.GLOBAL_LISTENNER = None
-            self.cnt -= 1
         else:
             print("ERROR: Listener is not running!")
 
@@ -117,21 +115,34 @@ class _Global_Log_Queue_Listener:
 
 
 class Log:
-    def get_level(self, level: str) -> int:
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+    def get_level(self, level: Union[int, str]) -> int:
         if isinstance(level, int):
             return level
-        if isinstance(level, str):
-            if level.upper() == "DEBUG":
+        elif isinstance(level, str):
+            level = level.upper()
+            if level == "DEBUG":
                 return logging.DEBUG
-            if level.upper() == "INFO":
+            elif level == "INFO":
                 return logging.INFO
-            if level.upper() == "WARNING":
+            elif level == "WARNING":
                 return logging.WARNING
-            if level.upper() == "ERROR":
+            elif level == "ERROR":
                 return logging.ERROR
-            if level.upper() == "CRITICAL":
+            elif level == "CRITICAL":
                 return logging.CRITICAL
-        return logging.INFO
+            else:
+                raise ValueError(f"Invalid log level: {level}")
+        else:
+            raise TypeError(
+                "Invalid type for log level:"
+                f"{type(level)}. Expected int or str."
+            )
 
     def __init__(
         self,
@@ -144,9 +155,11 @@ class Log:
     ) -> None:
         level = self.get_level(level=level)
         global_level = self.get_level(level=global_level)
-
         self.listener = _Global_Log_Queue_Listener(
-            level=global_level, path=path, use_STDOUT=use_STDOUT, use_STDERR=use_STDERR
+            level=global_level,
+            path=path,
+            use_STDOUT=use_STDOUT,
+            use_STDERR=use_STDERR
         )
         self.level = level
         self.logger = self.get_logger(name=name, level=level)
@@ -180,7 +193,7 @@ class Log:
         self.logger.critical(msg=message)
 
     def stdout(self, message: str) -> None:
-        print(message, file=self.logger)
+        print(message)
 
     def stderr(self, message: str) -> None:
         print(message, file=sys.stderr)
