@@ -172,7 +172,7 @@ class ShardedLinear(torch.nn.Module):
                         * (self.rank + 1)
                     ]
                 )
-                if self.bias:
+                if self.bias is not None:
                     self.bias = torch.nn.Parameter(
                         linear.bias[
                             self.shard_out_features
@@ -193,7 +193,7 @@ class ShardedLinear(torch.nn.Module):
                         * (self.rank + 1),
                     ]
                 )
-                if self.bias:
+                if self.bias is not None:
                     self.bias = torch.nn.Parameter(linear.bias)
         else:
             self.weight = torch.nn.Parameter(linear.weight)
@@ -230,7 +230,7 @@ class ShardedLinear(torch.nn.Module):
         return repr
 
 
-class shardedConv1D(torch.nn.Module):
+class ShardedConv1D(torch.nn.Module):
     def __init__(self, conv1d: torch.nn.Conv1d, row_parallel: bool = False):
         super().__init__()
         """
@@ -298,7 +298,7 @@ class shardedConv1D(torch.nn.Module):
         return output
 
 
-class shardedConv2D(torch.nn.Module):
+class ShardedConv2D(torch.nn.Module):
     def __init__(self, conv2d: torch.nn.Conv2d, row_parallel: bool = False):
         super().__init__()
         """

@@ -1,6 +1,8 @@
+import re
 import torch
 import torch.nn as nn
 from typing import Iterable, Union
+from ._hook_handler import _MetaPEFTHandler
 
 
 class LoRA(nn.Module):
@@ -215,3 +217,32 @@ def get_handle(model: nn.Module, module_names: Iterable[str] = []):
         ):
             _loras.append(module)
     return LoRAHandle(_loras)
+
+
+class LoRAHandler(_MetaPEFTHandler):
+    def __init__(
+            self, module,  rank, alpha=None,
+            module_names=[], lora_names=[], **kwargs
+    ):
+        super().__init__(module, **kwargs)
+        self._handle = []
+        for name, sub_module in self.module.named_modules():
+            if re.match("|".join(module_names), name) and isinstance(sub_module, nn.Linear):
+                lora = LoRA(sub_module, rank, alpha=alpha, name=lora_names)
+                self._handle.append(lora)
+                _name = name.split(".")
+                _module = self.module
+                for i in range(len(_name) - 1):
+                    _module = _module.__getattr__(_name[i])
+                _module.__setattr__(_name[-1], lora)
+
+    def enable(self):
+        for handle in self._handle:
+            handle.activate()
+
+    def disable(self):
+        for handle in self._handle:
+            handle.deactivate()
+
+    def forward(self, *args, **kwargs):
+        return self.module(*args, **kwargs)
