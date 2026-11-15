@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from torch.utils.data.sampler import Sampler
 from typing import Optional, Sized, Iterable, Tuple, Union
-from ..datasets.DomainDataset import DomainDataset
+from ...datasets.DomainDataset import DomainDataset
 
 
 def _pretty_print_nested_lists_in_double_columns(

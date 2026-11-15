@@ -290,8 +290,20 @@ rm -rf objdir
         name=f"{module_name}",
         location=_lib_path
     )
+    package = sys.modules[__name__]
     module = importlib.util.module_from_spec(spec=spec)
     spec.loader.exec_module(module=module)
+    # The library's init registers it as sys.modules["m00nny_utils"], in place of this package: `import m00nny_utils`
+    # would then be the library alone, without datasets, torch, util, system or Log. Keep the package there and put
+    # the library's members on it; its submodules (algorithm, linalg) become m00nny_utils.<name>.
+    import types
+    sys.modules[__name__] = package
+    for _name, _member in vars(module).items():
+        if _name.startswith("_"):
+            continue
+        setattr(package, _name, _member)
+        if isinstance(_member, types.ModuleType):
+            sys.modules[f"{__name__}.{_name}"] = _member
 
 
 # U1/U0 split (2026-10-30): the stdlib-only core (system/, util/ formatting, version, ...)
