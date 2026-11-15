@@ -319,7 +319,7 @@ if _os.environ.get("LIBM00NNY_SKIP_NATIVE", "0") != "1":
             raise ImportError(
                 f"m00nny_utils: the import-time native build needs a CUDA build of torch, but this torch "
                 f"({_torch.__version__}) has none. On Linux with an NVIDIA GPU, install the 'native' extra "
-                "without a backend extra (uv sync --extra native: PyPI's torch is a CUDA build), "
+                "without a backend extra (uv sync: PyPI's torch is a CUDA build), "
                 "or set LIBM00NNY_SKIP_NATIVE=1 to use the pure-Python core."
             )
         del _torch
@@ -327,7 +327,7 @@ if _os.environ.get("LIBM00NNY_SKIP_NATIVE", "0") != "1":
     except ModuleNotFoundError as _e:
         raise ImportError(
             f"m00nny_utils: the import-time native build needs '{_e.name}', which is not installed. "
-            "Install the 'native' extra (uv sync --extra native, on Linux with an NVIDIA GPU), "
+            "Install without a backend extra (uv sync, on Linux with an NVIDIA GPU), "
             "or set LIBM00NNY_SKIP_NATIVE=1 to use the pure-Python core."
         ) from _e
 del _os

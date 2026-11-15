@@ -427,83 +427,39 @@ wheels = [
 name = "m00nny-utils"
 version = "1.0.0"
 source = { editable = "." }
+dependencies = [
+    { name = "ffmpeg-python" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "requests" },
+    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
+    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
+]
 
 [package.optional-dependencies]
-all = [
-    { name = "ffmpeg-python" },
-    { name = "huggingface-hub" },
-    { name = "numpy" },
-    { name = "requests" },
-    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-]
 cpu = [
     { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-]
-datasets = [
-    { name = "ffmpeg-python" },
-    { name = "numpy" },
-    { name = "requests" },
-    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-]
-media = [
-    { name = "ffmpeg-python" },
-    { name = "numpy" },
-    { name = "requests" },
-    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-]
-native = [
-    { name = "requests" },
-    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-]
-parallel = [
-    { name = "huggingface-hub" },
-    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
     { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
 ]
 rocm = [
     { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" } },
     { name = "triton-rocm", marker = "sys_platform == 'linux'" },
 ]
-torch = [
-    { name = "torch", version = "2.14.1+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-12-m00nny-utils-rocm'" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm') or (extra != 'extra-12-m00nny-utils-cpu' and extra != 'extra-12-m00nny-utils-rocm')" },
-    { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-12-m00nny-utils-cpu') or (extra == 'extra-12-m00nny-utils-cpu' and extra == 'extra-12-m00nny-utils-rocm')" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "ffmpeg-python", marker = "extra == 'media'" },
-    { name = "huggingface-hub", marker = "extra == 'parallel'" },
-    { name = "m00nny-utils", extras = ["media"], marker = "extra == 'datasets'" },
-    { name = "m00nny-utils", extras = ["native", "torch", "parallel", "media", "datasets"], marker = "extra == 'all'" },
-    { name = "numpy", marker = "extra == 'media'" },
-    { name = "requests", marker = "extra == 'media'" },
-    { name = "requests", marker = "extra == 'native'" },
+    { name = "ffmpeg-python" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "requests" },
+    { name = "torch" },
     { name = "torch", marker = "extra == 'cpu'", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "m00nny-utils", extra = "cpu" } },
-    { name = "torch", marker = "extra == 'media'" },
-    { name = "torch", marker = "extra == 'native'" },
-    { name = "torch", marker = "extra == 'parallel'" },
     { name = "torch", marker = "extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "m00nny-utils", extra = "rocm" } },
-    { name = "torch", marker = "extra == 'torch'" },
     { name = "triton-rocm", marker = "sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "m00nny-utils", extra = "rocm" } },
 ]
-provides-extras = ["native", "torch", "parallel", "media", "datasets", "all", "cpu", "rocm"]
+provides-extras = ["cpu", "rocm"]
 
 [[package]]
 name = "markupsafe"
