@@ -2,7 +2,7 @@ import torch
 import ffmpeg
 import numpy as np
 from typing import Union, Iterable
-from ..system.threads import Thread
+from ..system.task_pool import Task
 from .mediafile import (
     _Media,
     _MediaFile,
@@ -23,7 +23,7 @@ class _AudioFile(_MediaFile):
         filename: PathLike,
     ):
         super().__init__(filename)
-        self._metadata = Thread(target=self._initialize_streams, daemon=True)
+        self._metadata = Task(target=self._initialize_streams, daemon=True)
         self._metadata.start()
 
     def _initialize_streams(self):

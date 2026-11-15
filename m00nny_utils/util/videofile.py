@@ -3,7 +3,7 @@ import torch
 import ffmpeg
 import numpy as np
 from fractions import Fraction
-from ..system.threads import Thread
+from ..system.task_pool import Task
 from typing import Union, Iterable
 from .mediafile import (
     _Media,
@@ -24,7 +24,7 @@ class _VideoFile(_MediaFile):
 
     def __init__(self, filename):
         super().__init__(filename)
-        self._metadata = Thread(target=self._initialize_streams, daemon=True)
+        self._metadata = Task(target=self._initialize_streams, daemon=True)
         self._metadata.start()
 
     def _initialize_streams(self):
