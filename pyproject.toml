@@ -22,17 +22,17 @@ dependencies = []
 native = ["torch", "requests"]
 torch = ["torch"]
 media = ["torch", "numpy", "ffmpeg-python", "requests"]
-# datasets/ reaches util's media modules, and dataset_utils imports six inside a function.
-datasets = ["m00nny-utils[media]", "torchvision", "pillow", "psutil", "tqdm", "opencv-python", "six"]
+# datasets/ reads its files through util's media modules and fetches them with util's downloader.
+datasets = ["m00nny-utils[media]"]
 all = ["m00nny-utils[native,torch,media,datasets]"]
-# Torch backend. By default torch and torchvision come from PyPI, whose Linux wheels are CUDA builds
+# Torch backend. By default torch comes from PyPI, whose Linux wheels are CUDA builds
 # (torch 2.15.0 requires cuda-toolkit 13.2) and whose macOS arm64 wheels carry MPS: CUDA and MPS take
 # no extra, and the CUDA version follows torch's own as torch is upgraded. Only backends PyPI does not
 # ship are declared, at most one per install (see [tool.uv] conflicts):
 #   cpu    CPU-only torch on Linux
 #   rocm   AMD ROCm torch; its index path names the ROCm release, the one value to bump by hand
-cpu = ["torch", "torchvision"]
-rocm = ["torch", "torchvision", "triton-rocm; sys_platform == 'linux'"]
+cpu = ["torch"]
+rocm = ["torch", "triton-rocm; sys_platform == 'linux'"]
 
 [tool.setuptools]
 packages = ["m00nny_utils"]
@@ -57,10 +57,6 @@ conflicts = [[{ extra = "cpu" }, { extra = "rocm" }]]
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-rocm", extra = "rocm" },
-]
-torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-rocm", extra = "rocm" },
 ]

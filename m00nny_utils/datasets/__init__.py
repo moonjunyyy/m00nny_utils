@@ -1,11 +1,14 @@
-from .CUB200 import CUB200
+from .DomainDataset import DomainDataset
 from .multiDatasets import multiDatasets
+from .CUB200 import CUB200
 from .Flowers102 import Flowers102
 from .NotMNIST import NotMNIST
 from .SVHN import SVHN
 from .TinyImageNet import TinyImageNet
+from .CIFAR import CIFAR10, CIFAR100
 from .MNIST import MNIST
 from .FashionMNIST import FashionMNIST
+from .ImageNet import ImageNet
 from .Imagenet_R import Imagenet_R
 from .CORe50 import CORe50
 from .DomainNet import DomainNet
@@ -15,9 +18,9 @@ from .MNISTM import MNISTM
 from .MNIST_RGB import MNIST_RGB
 from .iDigits import iDigits
 from .UCF_101 import UCF101
-from torchvision.datasets import CIFAR10, CIFAR100, ImageNet
 
 __all__ = [
+    "DomainDataset",
     "CUB200",
     "multiDatasets",
     "Flowers102",
@@ -36,7 +39,9 @@ __all__ = [
     "SynDigit",
     "MNISTM",
     "MNIST_RGB",
-    "UCF_101",
+    "iDigits",
+    "UCF101",
+    "get_dataset",
 ]
 
 # dictionary of tuple of dataset, mean, std

@@ -1,36 +1,25 @@
-from typing import Any, Callable, Optional, Tuple, TypeVar
+from .dataset import _MetaArrayDataset
 
-import numpy as np
-import os
-import torch
-from torch.utils.data import Dataset
-from torchvision.datasets import SVHN
-from torchvision.transforms import transforms
 
-from PIL import Image
+class SVHN(_MetaArrayDataset):
+    # The original distribution first; further mirrors of the same files go after it.
+    mirrors = ('http://ufldl.stanford.edu/housenumbers/',)
+    folder = 'SVHN'
+    # One MAT-file per part: X (32, 32, 3, N) the images, y (N, 1) the labels.
+    images = {True: ('train_32x32.mat', 'X'), False: ('test_32x32.mat', 'X')}
+    labels = {True: ('train_32x32.mat', 'y'), False: ('test_32x32.mat', 'y')}
+    md5 = {
+        'train_32x32.mat': 'e26dedcc434d2e4c54c9b2d4a06d8373',
+        'test_32x32.mat': 'eb5a983be6a315427106f1b164d9cef3',
+    }
+    layout = 'HWCN'
+    class_names = tuple(str(i) for i in range(10))
 
-PathLike = TypeVar('PathLike', str, bytes, os.PathLike)
-ImageLike = TypeVar('ImageLike', Image.Image, torch.Tensor, np.ndarray)
+    @classmethod
+    def resources_of(cls, train):
+        name = cls.images[train][0]
+        return ((tuple(mirror + name for mirror in cls.mirrors), name, None, cls.md5[name]),)
 
-class SVHN(Dataset):
-    def ___init__(self,
-                 root : PathLike,
-                 train : bool=True,
-                 transform : Callable[[ImageLike],torch.Tensor]|None=None,
-                 target_transform : Callable[[ImageLike],torch.Tensor]|None=None,
-                 download : bool=False
-                 ) -> None:
-
-        super().__init__()
-        self.dataset = SVHN(root, "train" if train else "test", transforms.ToTensor() if transform is None else transform, target_transform, download)
-        
-        self.classes = [str(i) for i in range(10)]
-        self.targets = []
-        for cls in self.dataset.labels:
-            self.targets.append(int(cls))
-
-    def __getitem__(self, index):
-        return self.dataset.__getitem__(index)
-
-    def __len__(self):
-        return len(self.dataset)
+    def _targets(self, labels):
+        # The digit 0 is labelled 10 in the files.
+        return [label % 10 for label in super()._targets(labels)]

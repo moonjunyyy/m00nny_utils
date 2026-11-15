@@ -1,32 +1,29 @@
-# Wraping for the SHVN dataset
+import os
+from .dataset import _MetaDataset
+from ..util.arrayfile import read_arrays
+from ..util.imagefile import Image
 
-from typing import Callable, Optional
 
-from torch.utils.data import Dataset
-from torchvision.datasets import Flowers102
-from torchvision.transforms import transforms
+class Flowers102(_MetaDataset):
+    url = 'https://www.robots.ox.ac.uk/~vgg/data/flowers/102/'
+    resources = (
+        (url + '102flowers.tgz', '102flowers.tgz', 'jpg'),
+        (url + 'imagelabels.mat', 'imagelabels.mat', None),
+        (url + 'setid.mat', 'setid.mat', None),
+    )
+    # The ids of each part in setid.mat.
+    parts = {True: 'trnid', False: 'tstid'}
 
-class Flowers102(Dataset):
-    def __init__(
-        self,
-        root: str,
-        train: bool = True,
-        transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
-        download: bool = False,
-    ) -> None:
-
-        super().__init__()
-        self.dataset = Flowers102(root, "train" if train else "test", transforms.ToTensor() if transform is None else transform, target_transform, download)
-        
+    def __init__(self, root, train=True, transform=None, target_transform=None, download=False):
+        super().__init__(root, transform, target_transform)
+        self.train = train
+        directory = os.path.join(self.root, 'flowers-102')
+        self._fetch(download, directory)
+        labels = read_arrays(os.path.join(directory, 'imagelabels.mat'))['labels'].reshape(-1)
+        ids = read_arrays(os.path.join(directory, 'setid.mat'))[self.parts[train]].reshape(-1)
+        # jpg/image_<id>.jpg; the ids and the labels start at 1.
+        for image_id in ids.astype(int).tolist():
+            self.samples.append(os.path.join(directory, 'jpg', f'image_{image_id:05d}.jpg'))
+            self.targets.append(int(labels[image_id - 1]) - 1)
         self.classes = [str(i) for i in range(102)]
-        self.targets = []
-        for cls in self.dataset._labels:
-            self.targets.append(int(cls))
-
-    def __getitem__(self, index):
-        image, label = self.dataset.__getitem__(index)
-        return image.mean(dim=0, keepdim=True).expand(3,-1,-1), label
-
-    def __len__(self):
-        return len(self.dataset)
+        self._open(Image)
