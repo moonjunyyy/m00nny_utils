@@ -9,8 +9,9 @@ class WarmUpConstantScheduler(torch.optim.lr_scheduler.LRScheduler):
 
     def _initial_step(self):
         if self.initial_lrs is None:
+            self.initial_lrs = []
             for group in self.optimizer.param_groups:
-                self.initial_lrs = [group["lr"]]
+                self.initial_lrs.append(group["lr"])
         else:
             for i, group in enumerate(self.optimizer.param_groups):
                 group["lr"] = self.initial_lrs[i]
