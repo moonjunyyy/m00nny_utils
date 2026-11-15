@@ -3,6 +3,7 @@ from itertools import product
 from torch.utils.data.sampler import Sampler
 from typing import Callable, Hashable, Iterable, List, Optional, Sequence, Sized, Tuple, Union
 from ...util.labels import UNLABELED
+from .sampler_base import _ReplicaSampler
 
 # What the tasks are split by: a label axis of the dataset (the name of a per-sample attribute: "targets",
 # "domains", "super_classes", ...), several axes together (their combinations are the categories), or a function
@@ -117,20 +118,6 @@ def label_keys(data_source: Sized, criterion: Criterion) -> Tuple[List[Hashable]
     keys = list(zip(*axes))
     categories = list(product(*[sorted(set(v for v in axis if v != UNLABELED)) for axis in axes]))
     return keys, categories
-
-
-class _ReplicaSampler(Sampler):
-    """The part every sampler here shares: one replica's share of a list of indices."""
-
-    def _init_replicas(self, num_replicas: Optional[int], rank: Optional[int]) -> None:
-        self.distributed = num_replicas is not None and rank is not None
-        self.num_replicas = num_replicas if num_replicas is not None else 1
-        self.rank = rank if rank is not None else 0
-
-    def _share(self, indices: List[int]) -> List[int]:
-        # Every replica gets the same number of samples: the tail that does not divide is left out.
-        num_samples = len(indices) // self.num_replicas
-        return indices[self.rank:num_samples * self.num_replicas:self.num_replicas]
 
 
 class ContinualSampler(_ReplicaSampler):
