@@ -6,6 +6,7 @@
 #include "linalg/linalg.h"
 #include "distance/distance.h"
 #include "algorithm/algorithm.h"
+#include "safetensor/safetensor.h"
 
 static PyMethodDef M00NNY_Utils_Methods[] = {
     {"pairwise_distance",       (PyCFunction)dist_pairwise_distance,       METH_VARARGS | METH_KEYWORDS, "Computes the pairwise distance between two tensors."},
@@ -32,5 +33,6 @@ static const struct
 {
     {"algorithm", PyInit_algorithm},
     {"linalg",    PyInit_linalg},
+    {"safetensor", PyInit_safetensor},
 };
 #endif // LIBM00NNY_H

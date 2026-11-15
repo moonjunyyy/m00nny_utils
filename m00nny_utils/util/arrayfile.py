@@ -7,7 +7,7 @@ import torch
 import ffmpeg
 import numpy as np
 from typing import Dict, Hashable, Iterable, Optional, Union
-from ..system.threads import Thread
+from ..system.task_pool import Task
 from .mediafile import (
     _Media,
     _MediaFile,
@@ -189,7 +189,7 @@ class _ArrayFile(_MediaFile):
         self.layout = layout
         self.records = records
         # Reading the container is the probe.
-        self._metadata = Thread(target=self._initialize_streams, daemon=True)
+        self._metadata = Task(target=self._initialize_streams, daemon=True)
         self._metadata.start()
 
     def _initialize_streams(self):

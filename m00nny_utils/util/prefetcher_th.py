@@ -2,7 +2,7 @@ import torch
 import threading
 import numpy as np
 from torch import Tensor
-from ..sampler import Sampler
+from ..torch.sampler.sampler_base import SamplerBase as Sampler
 from typing import List, Tuple, Dict, Any, TypeVar, Sequence, Callable
 
 

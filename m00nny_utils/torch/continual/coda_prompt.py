@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from ._cl_handler import (
     _CLHandler, vit_dims, vit_head, vit_layers, vit_tokens,
 )
-from .prompt import _LayerPromptTuning
+from ..layer.prompt import _LayerPromptTuning
 
 
 def _ortho_penalty(t: torch.Tensor) -> torch.Tensor:

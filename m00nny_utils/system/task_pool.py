@@ -36,6 +36,9 @@ class _Task_Pool:
     """
     __instance = None
     __max_running_threads = os.cpu_count()
+    # Taking the pool, giving it back, and starting or stopping its workers
+    # happen one at a time.
+    __lock = RLock()
 
     @classmethod
     def set_max_thread(
@@ -49,23 +52,26 @@ class _Task_Pool:
                 cls.__instance._remove_worker()
 
     def __new__(cls, *args, **kwargs):
-        if cls.__instance is None:
-            cls.__instance = super().__new__(cls)
-            cls.__instance.ref_count = 0
-            cls.__instance.__is_initialized = False
-        cls.__instance.ref_count += 1
-        return cls.__instance
+        with cls.__lock:
+            if cls.__instance is None:
+                cls.__instance = super().__new__(cls)
+                cls.__instance.ref_count = 0
+                cls.__instance.__is_initialized = False
+            cls.__instance.ref_count += 1
+            return cls.__instance
 
     def __init__(self) -> None:
-        if self.__is_initialized:
-            return
-        self.__is_initialized = True
-        self.__task_queue = []         # Thread queue.
-        self.__queue_cv = Condition()  # Condition variable for the task queue.
-        self.__workers = {}            # Worker threads.
-        self.__stop_event = Event()
-        # Initialize the worker threads.
-        self.set_max_thread(self.__max_running_threads)
+        with self.__lock:
+            if self.__is_initialized:
+                return
+            self.__is_initialized = True
+            self.__task_queue = []         # Thread queue.
+            # Condition variable for the task queue.
+            self.__queue_cv = Condition()
+            self.__workers = {}            # Worker threads.
+            self.__stop_event = Event()
+            # Initialize the worker threads.
+            self.set_max_thread(self.__max_running_threads)
 
     def _expand_worker(self) -> None:
         __worker = _Worker_Thread(self)
@@ -123,18 +129,24 @@ class _Task_Pool:
                     return None
 
     def release(self):
-        self.ref_count -= 1
-        if self.ref_count == 0:
-            self.__stop_event.set()
-            with self.__queue_cv:
-                self.__queue_cv.notify_all()
-            for __worker in self.__workers.values():
-                __worker.join()
+        with self.__lock:
+            self.ref_count -= 1
+            if self.ref_count == 0:
+                self.__stop_event.set()
+                with self.__queue_cv:
+                    self.__queue_cv.notify_all()
+                for __worker in self.__workers.values():
+                    __worker.join()
+                # The workers are gone: the next Task starts the pool again.
+                self.__is_initialized = False
 
 
 class _Worker_Thread(threading.Thread):
     def __init__(self, pool: _Task_Pool) -> None:
-        super().__init__()
+        # A daemon: a Task that is never joined keeps its hold on the pool,
+        # the workers are then never stopped, and as non-daemon threads they
+        # would keep the interpreter from exiting.
+        super().__init__(daemon=True)
         self.local = threading.local()
         self.local.current_thread = None
         self.pool = pool
@@ -192,6 +204,10 @@ class Task:
         }
         self.running = threading.Event()
         self.done = threading.Event()
+        # join() gives the pool back once, however many threads call it
+        # and however often.
+        self.__join_lock = Lock()
+        self.__released = False
 
     def start(self) -> None:
         if not self.running.is_set() and not self.done.is_set():
@@ -214,9 +230,12 @@ class Task:
 
     def join(self):
         self.done.wait()
+        with self.__join_lock:
+            if not self.__released:
+                self.__released = True
+                self.__thread_pool.release()
         if isinstance(self.return_val, TaskException):
             raise self.return_val
-        self.__thread_pool.release()
         return self.return_val
 
     def __eq__(self, other) -> bool:
