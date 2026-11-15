@@ -1,5 +1,6 @@
 from . import algorithm
 from . import linalg
+from .system.log import Log as Log
 
 
 def __bootstrap__() -> None:
@@ -217,12 +218,10 @@ def __bootstrap__() -> None:
             log.debug(f"{'CUDA path:':<20}{CUDA_PATH}")
             log.debug(f"{'Libtorch version:':<20}{TORCH_VERSION}")
             log.debug(f"{'Libtorch path:':<20}{LIBTORCH_PATH}")
-            log.debug(f"{'CUDNN info:': < 20}{
-                      CUDNN_VERSION if USE_CUDNN else None}")
+            log.debug(f"{'CUDNN info:':<20}{CUDNN_VERSION if USE_CUDNN else None}")
             log.debug(f"{'CUDSS info:':<20}{USE_CUDSS if USE_CUDSS else None}")
             log.debug(
-                f"{'CUSPARSELT info:': < 20}{
-                    USE_CUSPARSELT if USE_CUSPARSELT else None}"
+                f"{'CUSPARSELT info:':<20}{USE_CUSPARSELT if USE_CUSPARSELT else None}"
             )
             log.debug(f"{'NCCL info:':<20}{USE_NCCL if USE_NCCL else None}")
             log.debug(f"{'Debug mode:':<20}{'Debug' if DEBUG else 'Release'}")
