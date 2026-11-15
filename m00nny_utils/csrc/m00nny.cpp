@@ -6,7 +6,7 @@ PyInit_m00nny_utils
 {
     PyObject *m;
 
-    m = PyModule_Create(&M00NNY_Utils_Module);
+    m = LibM00nnyCreateModule(&M00NNY_Utils_Module);
     if (m == NULL) return NULL;
 
     for (const auto &submodule : M00NNY_Utils_Submodules)

@@ -5,7 +5,7 @@ PyInit_algorithm
 (void)
 {
     PyObject *m;
-    m = PyModule_Create(&Algorithm_Module);
+    m = LibM00nnyCreateModule(&Algorithm_Module);
     if (m == NULL)
         return NULL;
     for (PyTypeObject *type : Algorithm_Types)

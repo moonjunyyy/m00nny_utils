@@ -588,7 +588,7 @@ PyInit_linalg
 (void)
 {
     PyObject *m;
-    m = PyModule_Create(&Linalg_Module);
+    m = LibM00nnyCreateModule(&Linalg_Module);
     if (m == NULL)
         return NULL;
     return m;

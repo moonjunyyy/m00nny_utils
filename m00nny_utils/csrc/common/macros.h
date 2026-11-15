@@ -49,6 +49,22 @@ struct LibM00nnyGILScope
 #define ExitGILScope }
 
 /*
+A module of this library: PyModule_Create and, on a free-threaded CPython, the declaration that the module runs
+without the GIL (without it, importing the library turns the GIL back on for the whole process).
+The functions keep no shared mutable state. An object (KMeans, TSNE) is not synchronized: use one object from one
+thread at a time.
+*/
+inline PyObject*
+LibM00nnyCreateModule(PyModuleDef* def)
+{
+    PyObject* m = PyModule_Create(def);
+#ifdef Py_GIL_DISABLED
+    if (m != NULL && PyUnstable_Module_SetGIL(m, Py_MOD_GIL_NOT_USED) < 0) { Py_DECREF(m); return NULL; }
+#endif
+    return m;
+}
+
+/*
 Set an attribute to the object with a string name.
 This macro is used when setting an attribute with C-style string.
 */

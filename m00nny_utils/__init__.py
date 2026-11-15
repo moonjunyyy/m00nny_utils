@@ -21,6 +21,7 @@ def __bootstrap__() -> None:
 
     import sys
     import json
+    import sysconfig
     import torch
     import shutil
     from .util.version import Version
@@ -176,6 +177,8 @@ def __bootstrap__() -> None:
         _build_info = {
             "OS":         f"{OS}-{OS_ARCH}",
             "Python":     str(PYTHON_VERSION),
+            # the ABI the library is compiled for (e.g. cpython-314t-…: free-threaded), not told by the version
+            "PythonABI":  sysconfig.get_config_var("SOABI"),
             "CUDA":       str(CUDA_VERSION),
             "Libtorch":   str(TORCH_VERSION),
             "CUDNN":      str(CUDNN_VERSION) if USE_CUDNN else None,
@@ -228,6 +231,7 @@ mkdir objdir
 cd objdir
 cmake .. \\
 -DPREFIX_PATH={CURRENT_DIR} \\
+-DPython_EXECUTABLE={PYTHON_PATH} \\
 -DCMAKE_CUDA_COMPILER={CUDA_PATH}/bin/nvcc \\
 -DUSE_CUDSS={USE_CUDSS} \\
 -DCAFFE2_USE_CUDNN={USE_CUDNN} \\

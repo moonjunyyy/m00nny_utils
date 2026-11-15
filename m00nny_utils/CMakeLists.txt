@@ -27,7 +27,9 @@ set(PREFIX_PATH "/usr/local" CACHE PATH "Installation prefix")
 
 message("\n\n")
 message("----------------------PYTHON----------------------")
-find_package(Python REQUIRED COMPONENTS Development)
+# The interpreter that loads the library (-DPython_EXECUTABLE, given by the import-time build) decides the headers,
+# the library and the ABI (free-threaded or not); without it CMake takes whichever Python it finds first.
+find_package(Python REQUIRED COMPONENTS Interpreter Development)
 message(STATUS "Python version: ${Python_VERSION}")
 message(STATUS "Python include directory:")
 foreach(INCLUDE IN LISTS Python_INCLUDE_DIRS)
