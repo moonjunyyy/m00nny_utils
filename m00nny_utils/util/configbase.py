@@ -1,9 +1,70 @@
 import argparse
+import json
+import os
+import sys
+
+# The flag that names settings files. Precedence: the defaults of the flags < the files, in the
+# order given < the other flags of the command line.
+IMPORT_FLAG = "--import"
+
+
+def load_config(path):
+    """A settings file as a nested dict: .json, .yaml / .yml (needs PyYAML), .toml."""
+    _ext = os.path.splitext(path)[1].lower()
+    if _ext == ".json":
+        with open(path, "r") as f:
+            return json.load(f)
+    if _ext in (".yaml", ".yml"):
+        import yaml
+        with open(path, "r") as f:
+            return yaml.safe_load(f) or {}
+    if _ext == ".toml":
+        import tomllib
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    raise ValueError(f"{path}: a .json, .yaml or .toml file is expected")
+
+
+def dump_config(config, path):
+    """The nested dict parse_args gives, as a .json file that --import reads back."""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2, default=str)
+        f.write("\n")
+
+
+def flatten(config, prefix=()):
+    """{"opt": {"lr": 1}} -> {"opt.lr": 1}: the keys are the dests of the flags."""
+    _flat = {}
+    for _key, _val in config.items():
+        if isinstance(_val, dict):
+            _flat.update(flatten(_val, prefix + (_key,)))
+        else:
+            _flat[".".join(prefix + (_key,))] = _val
+    return _flat
+
+
+def nest(flat):
+    """{"opt.lr": 1} -> {"opt": {"lr": 1}}."""
+    _ret = {}
+    for _dest, _val in flat.items():
+        _cur = _ret
+        *_tree, _leaf = _dest.split(".")
+        for _it in _tree:
+            _cur = _cur.setdefault(_it, {})
+        _cur[_leaf] = _val
+    return _ret
 
 
 class ConfigBase:
     def __init__(self):
         self.parser = argparse.ArgumentParser()
+        self.parser.add_argument(
+            IMPORT_FLAG, dest="import", nargs="+", action="extend", default=[],
+            metavar="FILE",
+            help="Settings files (.json, .yaml, .toml), nested as the groups "
+            "are: {\"epochs\": 20, \"opt\": {\"lr\": 1e-4}}. A later file "
+            "overrides an earlier one, and the other flags override the files.")
         self._config_groups = {}
 
         default_group = self.add_group("Default", prefix="")
@@ -153,125 +214,97 @@ class ConfigBase:
     def del_group(self, group_name):
         _group = self._config_groups.pop(group_name, None)
         if _group is not None:
-            for _action in list(_group.group._group_actions):
-                _group._remove(_action)
-            self.parser._action_groups.remove(_group.group)
+            _group._drop()
 
     def parse_args(self, args=None):
-        parsed = vars(self.parser.parse_args(args))
-        ret = {}
-        for _dest, _val in parsed.items():
-            _cur = ret
-            _dest_tree = _dest.split(".")
-            for _it in _dest_tree[:-1]:
-                if _it not in _cur:
-                    _cur[_it] = {}
-                _cur = _cur[_it]
-            _cur[_dest_tree[-1]] = _val
-        return ret
-
-
-class _Config_Group_Action_Base(argparse.Action):
-    def __init__(
-        self,
-        option_strings,
-        **kwargs
-    ):
-        _option_strings = [
-            option.replace(".", "-") for option in option_strings
-        ]
-        super().__init__(
-            option_strings=_option_strings,
-            **kwargs
-        )
-        _first_option_str = option_strings[0].lstrip("-")
-        self._dest_group = (
-            _first_option_str.split(".")[0]
-            if "." in _first_option_str else None
-        )
-
-    def __call__(
-        self,
-        parser,
-        namespace,
-        values,
-        option_string=None
-    ):
-        # a flag (nargs=0) arrives with values=[]: it stores its const
-        setattr(
-            namespace, self.dest,
-            self.const if self.nargs == 0 else values
-        )
+        _argv = sys.argv[1:] if args is None else list(args)
+        # the settings files first: what they hold becomes the defaults the
+        # command line is parsed against
+        _pre = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+        _pre.add_argument(
+            IMPORT_FLAG, dest="files", nargs="+", action="extend", default=[])
+        _files = _pre.parse_known_args(_argv)[0].files
+        _actions = {_a.dest: _a for _a in self.parser._actions}
+        for _file in _files:
+            for _dest, _val in flatten(load_config(_file)).items():
+                _action = _actions.get(_dest)
+                if _action is None or _dest == "import":
+                    self.parser.error(f"{_file}: unknown setting '{_dest}'")
+                if _action.choices is not None and _val not in _action.choices:
+                    self.parser.error(
+                        f"{_file}: '{_dest}' is {_val!r}, not one of "
+                        f"{list(_action.choices)}")
+                self.parser.set_defaults(**{_dest: _val})
+        parsed = vars(self.parser.parse_args(_argv))
+        parsed.pop("import", None)
+        return nest(parsed)
 
 
 class _Config_Group:
-    def __init__(self, parser, name, prefix=""):
+    """The flags of one group. With the prefix `opt`, add_argument("--lr") is
+    the flag --opt-lr and the setting opt.lr; a group of a group (add_group)
+    goes one level further: --opt-sched-warmup, opt.sched.warmup."""
+
+    def __init__(self, parser, name, prefix="", parent=None):
         self.name = name
         self.prefix = prefix.lstrip("-").replace(" ", "_").lower()
+        self.path = tuple(
+            _p for _p in (parent.path if parent else ()) + (self.prefix,) if _p)
         self.parser = parser
         self.group = self.parser.add_argument_group(
-            f"{name}" if prefix else name,
-            f"(--{prefix}-...)"
+            name, f"(--{'-'.join(self.path)}-...)" if self.path else None
         )
+        self.groups = {}
 
-    def add_argument(
-        self,
-        option_strings,
-        **kwargs
-    ):
-        if isinstance(option_strings, str):
-            option_strings = [option_strings]
-        # an explicit dest is kept, under the group prefix
-        _dest = kwargs.pop("dest", None)
-        if _dest is not None:
-            _dest = f"{self.prefix}.{_dest}".lstrip(".")
-        _metavar = kwargs.pop("metavar", None)
+    def add_group(self, group_name, prefix):
+        self.groups[group_name] = _Config_Group(
+            self.parser, group_name, prefix=prefix, parent=self
+        )
+        return self.groups[group_name]
+
+    def add_argument(self, *option_strings, **kwargs):
+        if len(option_strings) == 1 and not isinstance(option_strings[0], str):
+            option_strings = tuple(option_strings[0])
         _action = kwargs.get("action", None)
-        _option_strings = []
-        _prefix = f"--{self.prefix}." if self.prefix else "--"
-        for _option in option_strings:
-            _flag = _option.lstrip("-")
-            if _dest is None:
-                _dest = _flag.replace('-', '_')
-                # "--no-x" of a store_false flag stores into "x"
-                if _action == "store_false" and _dest.startswith("no_"):
-                    _dest = _dest[len("no_"):]
-                _dest = f"{self.prefix}.{_dest}".lstrip(".")
-            if _action in ["store_true", "store_false"]:
-                if _metavar is None:
-                    _metavar = ""
-                kwargs["nargs"] = 0
-                kwargs["const"] = True if _action == "store_true" else False
-                kwargs["default"] = False if _action == "store_true" else True
-
-            if _metavar is None:
-                _metavar = _flag.upper().replace("-", "_")
-            _option = _prefix + _flag.replace("_", "-")
-            _option_strings.append(_option)
-        kwargs["metavar"] = _metavar
-        kwargs["dest"] = _dest
-        kwargs["action"] = _Config_Group_Action_Base
-        self.group.add_argument(
-            *_option_strings,
+        _name = option_strings[0].lstrip("-")
+        # an explicit dest is kept, under the path of the group
+        _dest = kwargs.pop("dest", None)
+        if _dest is None:
+            _dest = _name.replace("-", "_")
+            # "--no-x" of a store_false flag stores into "x"
+            if _action == "store_false" and _dest.startswith("no_"):
+                _dest = _dest[len("no_"):]
+        _takes_value = _action in (None, "store", "append", "extend")
+        if _takes_value and kwargs.get("metavar") is None:
+            kwargs["metavar"] = _name.upper().replace("-", "_")
+        return self.group.add_argument(
+            *["--" + "-".join(self.path + (_o.lstrip("-"),))
+              for _o in option_strings],
+            dest=".".join(self.path + (_dest,)),
             **kwargs
         )
 
     def del_argument(self, dest):
-        _dest = f"{self.prefix}.{dest}" if self.prefix else dest
+        """Remove a setting of the group, by its name in the group ("lr", or the flag "--lr")."""
+        _dest = ".".join(self.path + (dest.lstrip("-").replace("-", "_"),))
         for _action in [
             action for action in self.group._group_actions
             if action.dest == _dest
         ]:
             self._remove(_action)
 
+    def _drop(self):
+        # the group, its flags and the groups under it, out of the parser
+        for _sub in self.groups.values():
+            _sub._drop()
+        self.groups = {}
+        for _action in list(self.group._group_actions):
+            self._remove(_action)
+        self.parser._action_groups.remove(self.group)
+
     def _remove(self, action):
         # off the parser too: its options and its default go with it
         self.group._remove_action(action)
         for _option in action.option_strings:
             self.parser._option_string_actions.pop(_option, None)
-
-
-if __name__ == "__main__":
-    config = ConfigBase()
-    args = config.parse_args()
-    print(args)
+        self.parser._defaults.pop(action.dest, None)

@@ -7,6 +7,7 @@ import torch
 import torch.distributed as dist
 
 from ..system.log import Log
+from ..util.configbase import dump_config
 from .parallel.info import (
     TensorParallelInfo,
     MultiprocessDeviceInfo
@@ -29,6 +30,7 @@ class RuntimeBase:
         opt={},
         lrs={},
         data={},
+        exp_id="default_exp",
         *args,
         **kwargs
     ):
@@ -40,7 +42,10 @@ class RuntimeBase:
         self.dtype = getattr(torch, dtype) if isinstance(dtype, str) else dtype
         self.random_seed = random_seed
         self.num_workers = num_workers
-        self.save_path = save_path
+        # The folder of the experiment: the log, the checkpoints and the
+        # configuration of the run (config.json) are kept in it.
+        self.exp_id = exp_id
+        self.save_path = os.path.join(save_path, exp_id) if exp_id else save_path
 
         self.dist_config = dist
         self.opt_config = opt
@@ -50,6 +55,15 @@ class RuntimeBase:
             os.makedirs(self.save_path, exist_ok=True)
         if self.random_seed is None:
             self.random_seed = time.time_ns() % 2 ** 32
+        # The configuration of the run, as --import reads it back: the seed is
+        # the one drawn above, so the file repeats the run.
+        self.config = dict(
+            mode=mode, epochs=epochs, batchsize=batchsize, device=device,
+            dtype=dtype if isinstance(dtype, str) else str(dtype).split(".")[-1],
+            random_seed=self.random_seed, num_workers=num_workers,
+            save_path=save_path, exp_id=exp_id,
+            dist=dist, opt=opt, lrs=lrs, data=data, **kwargs
+        )
 
     def init_distributed(self):
         _g_world = self.dist_config["global_world_size"]
@@ -114,6 +128,7 @@ class RuntimeBase:
             torch.cuda.manual_seed_all(self.random_seed)
 
     def run(self):
+        dump_config(self.config, os.path.join(self.save_path, "config.json"))
         procs = []
         for idx in range(1, self.dist_config["local_world_size"]):
             p = torch.multiprocessing.Process(target=self._entry, args=(idx,))
