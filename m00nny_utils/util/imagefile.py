@@ -21,6 +21,8 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 1
 
 
 class _ImageFile(_MediaFile):
+    _kind = "video"
+
     def __init__(self, filename):
         super().__init__(filename)
         # Get a single image stream info
@@ -40,12 +42,12 @@ class _ImageFile(_MediaFile):
         self,
         request: "MediaDecodeRequest",
     ) -> Union[bytes, "np.ndarray", "torch.Tensor"]:
-        if self._metadata is not None:
-            self._metadata.join()
-            self._metadata = None
+        self._ready()
         stream_idx = request.stream.index if request.stream else 0
+        if stream_idx < 0 or stream_idx >= len(self.streams):
+            raise IndexError("Image stream index out of range")
         ffmpeg_stream = ffmpeg.input(self.filename)
-        augments = request.aug_policy if request.aug_policy else None
+        augments = request.aug_policy
         meta_data = {
                     "width": self.widths[stream_idx],
                     "height": self.heights[stream_idx],
@@ -55,11 +57,11 @@ class _ImageFile(_MediaFile):
                 ffmpeg_stream,
                 meta=meta_data
             )
-        output, _ = ffmpeg_stream.output(
+        output = self._run(ffmpeg_stream.output(
             "pipe:",
             format="rawvideo",
             pix_fmt="rgb24",
-        ).run(capture_stdout=True, capture_stderr=True)
+        ))
         if request.return_type == MediaFileReturnType.NumPy:
             output = self.bytes_to_ndarray(
                 byte_data=output,
@@ -69,7 +71,7 @@ class _ImageFile(_MediaFile):
                     3,
                 ),
                 data_type=request.data_type,
-                original_dtype=MediaFileDataType.Int8,
+                original_dtype=MediaFileDataType.UInt8,
                 normalize=request.normalize,
             )
         elif request.return_type == MediaFileReturnType.PyTorch:
@@ -81,7 +83,7 @@ class _ImageFile(_MediaFile):
                     3,
                 ),
                 data_type=request.data_type,
-                original_dtype=MediaFileDataType.Int8,
+                original_dtype=MediaFileDataType.UInt8,
                 normalize=request.normalize,
             )
         return output
@@ -91,19 +93,5 @@ class _ImageFileManager(_MediaFileManager):
     _managed_class = _ImageFile
 
 class Image(_Media):
+    # image[augment]: no time axis, so the key is the augmentation policy (and/or a stream); see _Media.__getitem__.
     _manager_class = _ImageFileManager
-
-    def __getitem__(
-        self,
-        aug_policy: Optional[Augmentation] = None,
-        stream: Optional[MediaStreamRef] = None,
-    ):
-        request = MediaDecodeRequest(
-            stream=stream,
-            time_slice=None,
-            return_type=self.return_type,
-            data_type=self.data_type,
-            normalize=self.normalize,
-            aug_policy=aug_policy,
-        )
-        return self._file.decode(request)
