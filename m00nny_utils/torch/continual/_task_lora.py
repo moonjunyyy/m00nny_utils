@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ._cl_handler import _CLHandler
-from .lora import DEFAULT_TARGETS, _LayerLoRA, lora_targets
+from ..layer.lora import DEFAULT_TARGETS, _LayerLoRA, lora_targets
 
 
 class _LayerTaskLoRA(_LayerLoRA):
