@@ -39,7 +39,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from ._hook_handler import _MetaPEFTHandler
+from ..layer._hook_handler import _MetaPEFTHandler
 
 # Parameter names that belong to an output head rather than to the backbone.
 HEAD_PATTERN = r"^(head|heads|fc|classifier|predictor)\."
