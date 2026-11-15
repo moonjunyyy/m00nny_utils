@@ -67,7 +67,6 @@ class _Global_Log_Queue_Listener:
             )
             self.GLOBAL_LISTENNER.start()
             self.GLOBAL_LISTENING = True
-            self.cnt += 1
             # Stop the listener before the interpreter tears down the queue under its _monitor
             # thread (which otherwise dies with "Exception in thread ... (_monitor)" at every exit).
             atexit.register(self._stop_at_exit)
