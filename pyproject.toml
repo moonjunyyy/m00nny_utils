@@ -10,29 +10,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "m00nny-utils"
 version = "1.0.0"
-description = "Personal ML utilities: a stdlib-only core (system, util) with optional torch, media, dataset and native (C++/CUDA) parts."
+description = "Personal ML utilities on torch: system, util, datasets, torch (runtime, layers, continual learning, parallel) and native (C++/CUDA) parts."
 readme = "readme.md"
 requires-python = ">=3.12"
-dependencies = []
+# Everything the package imports: nothing is left to an extra, so `m00nny-utils` alone is a complete
+# install. The import-time native build (csrc/) links against the installed torch.
+dependencies = ["torch", "numpy", "requests", "ffmpeg-python", "huggingface-hub"]
 
 [project.optional-dependencies]
-# Import-time native build (U0): everything __bootstrap__ imports, directly or through install/
-# (torch, requests), plus gcc, g++, cmake and a CUDA torch on the machine. Without it, set
-# LIBM00NNY_SKIP_NATIVE=1 to use the core alone.
-native = ["torch", "requests"]
-torch = ["torch"]
-# torch/parallel: the sharded modules and the loader of their weights. The loader fetches a model's files with
-# huggingface_hub (imported by the function that downloads, load_transformers_as_sharded_module, when it is
-# called); everything else under torch/ needs torch alone.
-parallel = ["torch", "huggingface-hub"]
-media = ["torch", "numpy", "ffmpeg-python", "requests"]
-# datasets/ reads its files through util's media modules and fetches them with util's downloader.
-datasets = ["m00nny-utils[media]"]
-all = ["m00nny-utils[native,torch,parallel,media,datasets]"]
-# Torch backend. By default torch comes from PyPI, whose Linux wheels are CUDA builds
-# (torch 2.15.0 requires cuda-toolkit 13.2) and whose macOS arm64 wheels carry MPS: CUDA and MPS take
-# no extra, and the CUDA version follows torch's own as torch is upgraded. Only backends PyPI does not
-# ship are declared, at most one per install (see [tool.uv] conflicts):
+# Torch backends PyPI does not ship, at most one per install (see [tool.uv] conflicts). Without one,
+# torch is PyPI's: CUDA builds on Linux, MPS on macOS arm64.
 #   cpu    CPU-only torch on Linux
 #   rocm   AMD ROCm torch; its index path names the ROCm release, the one value to bump by hand
 cpu = ["torch"]
