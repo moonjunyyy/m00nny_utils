@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 from enum import Enum
-from ..system.threads import Lock
+from ..system.task_pool import Lock
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple, Iterable
 from .augmentation import Augmentation
