@@ -6,6 +6,12 @@ from .dataset import _MetaArrayDataset
 
 class CIFAR10(_MetaArrayDataset):
     url = 'https://www.cs.toronto.edu/~kriz/'
+    # The same archive at every address (its md5 is checked), tried in order. A mirror goes first: the
+    # original distribution serves the file at about a hundred kB/s. The original stays as the last one.
+    mirrors = (
+        'https://mindspore-website.obs.cn-north-4.myhuaweicloud.com/notebook/datasets/',
+        url,
+    )
     archive = ('cifar-10-binary.tar.gz', 'c32a1d4ab5d03f1284b67883e8d87530')
     archive_folder = ''   # the archive is kept in root and unpacks to root/<folder>
     folder = 'cifar-10-batches-bin'
@@ -20,7 +26,7 @@ class CIFAR10(_MetaArrayDataset):
     @classmethod
     def resources_of(cls, train):
         archive, md5 = cls.archive
-        return ((cls.url + archive, archive, cls.folder, md5),)
+        return ((tuple(mirror + archive for mirror in cls.mirrors), archive, cls.folder, md5),)
 
 
 class CIFAR100(CIFAR10):
